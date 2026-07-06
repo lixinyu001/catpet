@@ -98,6 +98,15 @@ function getBuffMult(buffType) {
   return buff.mult || 1;
 }
 
+// 获取flat值buff（如all_stat），默认返回0而非1
+function getFlatBuff(buffType) {
+  if (!G.buffs) return 0;
+  var buff = G.buffs[buffType];
+  if (!buff) return 0;
+  if (Date.now() > buff.expireAt) { delete G.buffs[buffType]; return 0; }
+  return buff.mult || 0;
+}
+
 function getBuffRemainingText(buffType) {
   if (!G.buffs || !G.buffs[buffType]) return '';
   var buff = G.buffs[buffType];
@@ -151,14 +160,14 @@ const TALENT_TREE = [
     desc: function(lv){ return '装备掉落率 +' + (lv*this.perLevel*100).toFixed(0) + '%'; } },
   { id: 'equip_quality', name: '装备精铸', icon: '⚔️', branch: 'loot', type: 'small', x: 280, y: 150, maxLevel: 3, perLevel: 0.025, requires: ['equip_drop'],
     desc: function(lv){ return '装备品质 +' + (lv*this.perLevel*100).toFixed(0) + '%'; } },
-  { id: 'fusion_drop', name: '熔岩之心', icon: '💠', branch: 'loot', type: 'medium', x: 500, y: 130, maxLevel: 4, perLevel: 0.04, requires: ['equip_drop', 'diamond_find'],
-    desc: function(lv){ return '融合石掉落率 +' + (lv*this.perLevel*100).toFixed(0) + '%'; } },
-  { id: 'hatch_drop', name: '石化秘术', icon: '🪨', branch: 'loot', type: 'medium', x: 620, y: 170, maxLevel: 4, perLevel: 0.04, requires: ['map_drop'],
-    desc: function(lv){ return '孵化石掉落率 +' + (lv*this.perLevel*100).toFixed(0) + '%'; } },
-  { id: 'gem_drop_rate', name: '宝石之眼', icon: '💠', branch: 'loot', type: 'medium', x: 720, y: 150, maxLevel: 4, perLevel: 0.05, requires: ['hatch_drop'],
+  { id: 'socket_nail_drop', name: '锻造之钉', icon: '🔨', branch: 'loot', type: 'medium', x: 500, y: 130, maxLevel: 4, perLevel: 0.04, requires: ['equip_drop', 'diamond_find'],
+    desc: function(lv){ return '打孔钉掉落率 +' + (lv*this.perLevel*100).toFixed(0) + '%'; } },
+  { id: 'repair_glue_drop', name: '修补之胶', icon: '🩹', branch: 'loot', type: 'medium', x: 620, y: 170, maxLevel: 4, perLevel: 0.04, requires: ['map_drop'],
+    desc: function(lv){ return '修补胶掉落率 +' + (lv*this.perLevel*100).toFixed(0) + '%'; } },
+  { id: 'gem_drop_rate', name: '宝石之眼', icon: '💠', branch: 'loot', type: 'medium', x: 720, y: 150, maxLevel: 4, perLevel: 0.05, requires: ['repair_glue_drop'],
     desc: function(lv){ return '宝石副本掉落量 +' + (lv*this.perLevel*100).toFixed(0) + '%'; } },
-  { id: 'loot_mastery', name: '寻宝大师', icon: '👑', branch: 'loot', type: 'core', x: 500, y: 60, maxLevel: 5, perLevel: 0.04, requires: ['fusion_drop', 'hatch_drop'],
-    desc: function(lv){ return '所有掉落加成 +' + (lv*this.perLevel*100).toFixed(0) + '%（宝箱/金币/钻石/蛋/装备/宝图/融合石/孵化石）'; } },
+  { id: 'loot_mastery', name: '寻宝大师', icon: '👑', branch: 'loot', type: 'core', x: 500, y: 60, maxLevel: 5, perLevel: 0.04, requires: ['socket_nail_drop', 'repair_glue_drop'],
+    desc: function(lv){ return '所有掉落加成 +' + (lv*this.perLevel*100).toFixed(0) + '%（宝箱/金币/钻石/蛋/装备/宝图/打孔钉/修补胶）'; } },
   // ===== 成长星轨（向右，绿色）— 10节点，38点 =====
   { id: 'exp_bonus', name: '智慧之泉', icon: '⭐', branch: 'growth', type: 'small', x: 580, y: 390, maxLevel: 6, perLevel: 0.03, requires: ['origin'],
     desc: function(lv){ return '经验获取 +' + (lv*this.perLevel*100).toFixed(0) + '%'; } },
@@ -298,6 +307,25 @@ function addExp(amount) {
       addBattleLog('info', '🎉 升级了！当前等级 ' + G.player.level + '（已获得的等级，无新天赋点）');
     }
     G.pets.forEach(function(p){ p.level = G.player.level; });
+    // 需求1：升级后检查主线任务是否可升级
+    if (typeof checkMainQuestUpgrade === 'function') checkMainQuestUpgrade();
+    // 需求5：检查是否有新功能解锁并显示剧情通知
+    if (typeof checkNewlyUnlockedFeatures === 'function') {
+      var unlocked = checkNewlyUnlockedFeatures(G.player.level);
+      unlocked.forEach(function(featId) {
+        var story = getFeatureUnlockStory(featId);
+        var featureName = FEATURE_UNLOCK_LEVELS && Object.keys(FEATURE_UNLOCK_LEVELS).indexOf(featId) >= 0 ? featId : featId;
+        if (story) {
+          addBattleLog('info', '🔓 ' + story);
+        } else {
+          addBattleLog('info', '🔓 新功能「' + featId + '」已解锁！');
+        }
+        // 同时弹出toast提示
+        if (typeof showToast === 'function') {
+          showToast('🔓 等级 ' + G.player.level + ' 解锁新功能！', 'success');
+        }
+      });
+    }
   }
   return gain;
 }

@@ -7,9 +7,21 @@ window.__GAME_LOADED__ = true;
     loadGame();
     checkDailyReset();
 
+    // 离线挂机奖励
+    var offlineRewards = calculateOfflineRewards();
+    if (offlineRewards) {
+      claimOfflineRewards();
+      setTimeout(function() { showOfflineRewardsModal(offlineRewards); }, 500);
+    }
+
     if (G.dailyTasks && !G.dailyTasks['login_claimed']) {
       updateDailyTask('login', 1);
       claimDailyTask('login');
+    }
+
+    // 需求1：初始化主线剧情任务
+    if (typeof initMainQuest === 'function') {
+      initMainQuest();
     }
 
     render();
@@ -39,6 +51,15 @@ window.__GAME_LOADED__ = true;
 setInterval(() => { saveGame(); }, 30000);
 // 每秒刷新buff栏（更新剩余时间）
 setInterval(() => { if (typeof renderBuffBar === 'function') renderBuffBar(); }, 1000);
+// v2.2.0 需求3：战斗卡死看门狗——每5秒检查一次，如果自动挂机中但无战斗/走路/定时器，则恢复
+setInterval(function() {
+  if (typeof autoBattleInterval === 'undefined' || typeof liveBattle === 'undefined') return;
+  if (autoBattleInterval && !liveBattle && !walkPhase && !battleTurnTimer && !battleSpawnTimer) {
+    // 战斗卡死：自动挂机标志存在，但没有任何战斗状态或定时器
+    console.log('[看门狗] 检测到战斗卡死，自动恢复...');
+    if (typeof spawnMonster === 'function') spawnMonster();
+  }
+}, 5000);
 window.addEventListener('beforeunload', () => {
   stopLiveBattle();
   if (autoBattleInterval) clearInterval(autoBattleInterval);

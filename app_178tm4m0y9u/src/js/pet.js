@@ -260,8 +260,25 @@ function getPetStats(pet) {
     灵力 = Math.round(智慧 * 2);
     速度 = Math.round(敏捷 * 1.5);
   }
-  // 天赋加成（含子天赋拆分）
+  // 人物属性20%真实附加到宠物四维基础属性（修复Bug：之前只加到衍生属性，四维未含人物加成）
   const cb = getCharacterBonusForPet();
+  var charBonusDetail = {
+    力量: cb.力量 || 0, 体质: cb.体质 || 0, 敏捷: cb.敏捷 || 0,
+    智力: cb.智力 || 0, 气血: cb.气血 || 0, atk: cb.atk || 0, def: cb.def || 0,
+  };
+  // 将人物20%属性直接附加到宠物四维
+  力量 += charBonusDetail.力量;
+  体质 += charBonusDetail.体质;
+  敏捷 += charBonusDetail.敏捷;
+  智慧 += charBonusDetail.智力;
+  // 重新计算衍生属性（四维已含人物20%加成，cb.气血/cb.atk/cb.def为额外flat加成）
+  气血 = Math.round(体质 * 10 + lv * 20) + charBonusDetail.气血;
+  魔法值 = Math.round(力量 * 1.5 + 智慧 * 2 + lv * 5);
+  攻击力 = Math.round(力量 * 2 + 敏捷 * 0.5) + charBonusDetail.atk;
+  防御力 = Math.round(体质 * 0.6) + charBonusDetail.def;
+  灵力 = Math.round(智慧 * 2);
+  速度 = Math.round(敏捷 * 1.5);
+  // 天赋加成（含子天赋拆分）
   var atkMult = 1 + getTalentBonus('pet_atk') + getTalentBonus('pet_atk_2') + getTalentBonus('pet_atk_3') + getTalentBonus('combat_mastery') + getTalentBonus('combat_ultimate');
   var hpMult = 1 + getTalentBonus('pet_hp') + getTalentBonus('pet_hp_2') + getTalentBonus('pet_hp_3') + getTalentBonus('combat_mastery') + getTalentBonus('combat_ultimate');
   var defMult = 1 + getTalentBonus('pet_def') + getTalentBonus('pet_def_2') + getTalentBonus('combat_ultimate');
@@ -328,18 +345,18 @@ function getPetStats(pet) {
   var formMpPct = formBonus ? (formBonus.mpPct || 0) : 0;
   var formHitRate = formBonus ? (formBonus.hitRate || 0) : 0;
   var formDmgReduce = formBonus ? (formBonus.dmgReduce || 0) : 0;
-  // 基础气血（含人物20%加成 + 天赋 + 宠物装备基础词条 + 套装百分比 + 阵法百分比）
-  var finalHp = Math.round((气血 + (cb.气血 || 0) + peBaseHp) * hpMult);
+  // 基础气血（四维已含人物20%加成 + 天赋 + 宠物装备基础词条 + 套装百分比 + 阵法百分比）
+  var finalHp = Math.round((气血 + peBaseHp) * hpMult);
   finalHp = Math.round(finalHp * (1 + petHpBonus + setHpPct + setAllPct));
-  // 基础攻击力（含人物20%加成 + 天赋 + 宠物装备基础词条 + 套装百分比 + 阵法百分比）
-  var finalAtk = Math.round((攻击力 + (cb.力量 || 0) * 0.5 + (cb.atk || 0) + peBaseAtk) * atkMult);
+  // 基础攻击力（四维已含人物20%加成 + 天赋 + 宠物装备基础词条 + 套装百分比 + 阵法百分比）
+  var finalAtk = Math.round((攻击力 + peBaseAtk) * atkMult);
   finalAtk = Math.round(finalAtk * (1 + setAtkPct + setAllPct));
-  // 基础防御力（含人物20%加成 + 天赋 + 宠物装备基础词条 + 套装百分比 + 阵法百分比）
-  var finalDef = Math.round((防御力 + (cb.体质 || 0) * 0.3 + (cb.def || 0) + peBaseDef) * defMult);
+  // 基础防御力（四维已含人物20%加成 + 天赋 + 宠物装备基础词条 + 套装百分比 + 阵法百分比）
+  var finalDef = Math.round((防御力 + peBaseDef) * defMult);
   finalDef = Math.round(finalDef * (1 + petDefBonus + setDefPct + setAllPct));
-  var finalSpd = Math.round((敏捷 + (cb.敏捷 || 0)) * spdMult * (1 + setSpdPct + setAllPct));
-  var finalInt = Math.round((智慧 + (cb.智力 || 0) * 0.5) * atkMult * (1 + setIntPct + setAllPct));
-  var finalLingli = Math.round((灵力 + (cb.智力 || 0) * 0.5) * atkMult * (1 + setIntPct + setAllPct));
+  var finalSpd = Math.round(敏捷 * spdMult * (1 + setSpdPct + setAllPct));
+  var finalInt = Math.round(智慧 * atkMult * (1 + setIntPct + setAllPct));
+  var finalLingli = Math.round(灵力 * atkMult * (1 + setIntPct + setAllPct));
   // 魔法值受阵法 mpPct 影响
   var finalMp = Math.round(魔法值 * (1 + formMpPct));
   return {
@@ -365,6 +382,7 @@ function getPetStats(pet) {
     equipSpecials: cb.specials || [],
     petEquipBonus: peBonus,
     formationBonus: formBonus,
+    charBonus: charBonusDetail,
   };
 }
 

@@ -12,6 +12,7 @@ const DEFAULT_STATE = {
     equipment: { weapon: null, helmet: null, armor: null, pants: null, gloves: null, shoes: null },
     forgeLevels: { weapon: 0, helmet: 0, armor: 0, pants: 0, gloves: 0, shoes: 0 },
     formation: ['front','mid','back'],
+    cultivation: { 力量: 0, 体质: 0, 敏捷: 0, 智力: 0 },
   },
   pets: [],
   eggs: [],
@@ -20,6 +21,8 @@ const DEFAULT_STATE = {
   battleLog: [],
   dailyTasks: {},
   dailyTaskDate: '',
+  weeklyTasks: {},       // 需求10：周常任务进度
+  weeklyTaskDate: '',   // 需求10：周常任务重置标识（周一日期）
   teamDungeonUsed: {},
   towerProgress: 0,
   towerMaxFloor: 0,
@@ -30,6 +33,7 @@ const DEFAULT_STATE = {
   marketListings: [],
   newPlayerGiftClaimed: false,
   battleSpeed: 1,
+  autoDecompose: { enabled: false, maxRarity: 'green', maxLevel: 10 },
   mapProgress: {},
   chests: [],
   autoOpenChests: true,
@@ -63,12 +67,12 @@ const DEFAULT_STATE = {
     mystic_crystal_low: 0, mystic_crystal_mid: 0, mystic_crystal_high: 0,
     ancient_rune_low: 0, ancient_rune_mid: 0, ancient_rune_high: 0,
   },
-  petEquipDungeonUsed: {},
   // 需求6：活动收获日志（按活动ID→日期→条目数组）
   activityLogs: {},
   // 阵法系统：已学阵法ID→{level, exp}，当前激活阵法ID
   formations: {},
   activeFormation: null,
+  formationFragments: 0, // 阵法碎片：分解阵法获得，5个可合成随机阵法书
   formationActivityUsed: {},
   formationEscortUsed: {},  // 需求2：押镖活动每日使用记录 {date: count}
   formationEscortProgress: null, // 需求2：押镖活动进度 {stage, rewardsEarned}
@@ -76,12 +80,24 @@ const DEFAULT_STATE = {
   skillBookHuntUsed: {},   // 需求6：技能书活动每日使用记录 {date: count}
   skillBookHuntProgress: null, // 需求6：当前活动阶段进度（null/0表示未开始，1-5表示当前阶段）
   petCaveUsed: {},         // 需求12：宠物秘境每日使用记录 {date: count}
-  // 血统系统：血统试炼每日使用记录
-  bloodlineTrialUsed: {},
+  // 进阶试炼每日使用记录（原 bloodlineTrialUsed，已重命名）
+  advanceTrialUsed: {},
   // 宠物派遣奇遇系统：当前派遣列表 & 历史
   dispatches: [],          // 当前进行中的派遣 [{id, mapId, petIds, startTs, durationIdx, totalPower}]
   dispatchHistory: [],     // 已领取的派遣历史 [{id, mapId, mapName, petIds, durationIdx, totalPower, startTs, collectTs, rewards}]
   dispatchDailyUsed: {},  // 每日派遣次数记录 {date: count}
+  // 离线挂机：上次保存时间戳
+  lastSaveTime: 0,
+  // 需求1：主线剧情任务链
+  mainQuest: null,  // { chainIdx, progress, questData, claimed }
+  // 需求5：血色要塞活动
+  crimsonFortress: null,      // 当前活动状态 { difficulty, round, kills, buffs, active, pendingBuffs }
+  crimsonFortressUsed: {},    // 每日使用记录 { date: count }
+  // v2.2.0 需求1：在线挂机彩蛋统计
+  idleEggStats: { total: 0, gold: 0, exp: 0, diamond: 0, items: 0 },
+  // v2.2.0 需求9：挖密藏系统——当前挖掘会话状态
+  digSession: null,  // { grid: [...], digsLeft, maxDigs, lensUsed: [], keyUsed, totalFound: {} }
+  digDailyUsed: {},  // 每日挖密藏次数记录 { date: count }
 };
 
 let G = JSON.parse(JSON.stringify(DEFAULT_STATE));
@@ -89,7 +105,10 @@ let G = JSON.parse(JSON.stringify(DEFAULT_STATE));
 function saveGame() {
   // 删除存档时跳过所有自动保存
   if (window.__DELETING_SAVE__) return;
-  try { localStorage.setItem('shadow_era_save', JSON.stringify(G)); } catch(e) {}
+  try {
+    G.lastSaveTime = Date.now();
+    localStorage.setItem('shadow_era_save', JSON.stringify(G));
+  } catch(e) {}
 }
 
 function loadGame() {
@@ -102,8 +121,10 @@ function loadGame() {
       }
       G = { ...JSON.parse(JSON.stringify(DEFAULT_STATE)), ...parsed };
       if (!G.player) G.player = JSON.parse(JSON.stringify(DEFAULT_STATE.player));
-      if (!G.dailyTasks || typeof G.dailyTasks !== 'object') G.dailyTasks = {};
-      if (!G.dailyTaskDate) G.dailyTaskDate = '';
+  if (!G.dailyTasks || typeof G.dailyTasks !== 'object') G.dailyTasks = {};
+  if (!G.dailyTaskDate) G.dailyTaskDate = '';
+  if (!G.weeklyTasks || typeof G.weeklyTasks !== 'object') G.weeklyTasks = {};
+  if (!G.weeklyTaskDate) G.weeklyTaskDate = '';
       if (!G.player.activeTeam || !Array.isArray(G.player.activeTeam)) G.player.activeTeam = [null, null, null];
       if (!G.statistics) G.statistics = { totalBattles: 0, totalHatches: 0, totalFusions: 0, totalDungeons: 0 };
       if (!G.marketListings || !Array.isArray(G.marketListings)) G.marketListings = [];
@@ -123,8 +144,9 @@ function loadGame() {
       if (!G.skillBooks || !Array.isArray(G.skillBooks)) G.skillBooks = [];
       if (!G.player.equipment) G.player.equipment = { weapon: null, helmet: null, armor: null, pants: null, gloves: null, shoes: null };
       if (!G.player.forgeLevels) G.player.forgeLevels = { weapon: 0, helmet: 0, armor: 0, pants: 0, gloves: 0, shoes: 0 };
+if (!G.player.cultivation) G.player.cultivation = { 力量: 0, 体质: 0, 敏捷: 0, 智力: 0 };
       if (!G.equipmentBag || !Array.isArray(G.equipmentBag)) G.equipmentBag = [];
-      if (!G.autoDecompose) G.autoDecompose = { enabled: false, maxRarity: 'green', maxLevel: 10 };
+      if (!G.autoDecompose) G.autoDecompose = JSON.parse(JSON.stringify(DEFAULT_STATE.autoDecompose));
       if (!G.player.formation || !Array.isArray(G.player.formation)) G.player.formation = ['front','mid','back'];
       if (!G.treasureMaps || !Array.isArray(G.treasureMaps)) G.treasureMaps = [];
       if (G.arenaScore === undefined) G.arenaScore = 0;
@@ -190,27 +212,54 @@ function loadGame() {
         G.petEquipMaterials['mystic_crystal_low'] = (G.petEquipMaterials['mystic_crystal_low'] || 0) + G.petEquipMaterials['beast_leather'];
         delete G.petEquipMaterials['beast_leather'];
       }
-      if (!G.petEquipDungeonUsed || typeof G.petEquipDungeonUsed !== 'object') G.petEquipDungeonUsed = {};
+      // petEquipDungeonUsed 已废弃（旧宠物装备副本系统已移除），清理旧存档数据
+      if (G.petEquipDungeonUsed) delete G.petEquipDungeonUsed;
       // 需求6：活动收获日志（按活动ID和日期分组）
       if (!G.activityLogs || typeof G.activityLogs !== 'object') G.activityLogs = {};
       // 阵法系统迁移
       if (!G.formations || typeof G.formations !== 'object') G.formations = {};
       if (G.activeFormation === undefined) G.activeFormation = null;
-      if (!G.formationActivityUsed || typeof G.formationActivityUsed !== 'object') G.formationActivityUsed = {};
-      // 需求2：押镖活动迁移
-      if (!G.formationEscortUsed || typeof G.formationEscortUsed !== 'object') G.formationEscortUsed = {};
-      if (G.formationEscortProgress === undefined) G.formationEscortProgress = null;
+if (G.formationFragments === undefined) G.formationFragments = 0;
+if (!G.formationActivityUsed || typeof G.formationActivityUsed !== 'object') G.formationActivityUsed = {};
+// 需求2：押镖活动迁移
+if (!G.formationEscortUsed || typeof G.formationEscortUsed !== 'object') G.formationEscortUsed = {};
+if (G.formationEscortProgress === undefined) G.formationEscortProgress = null;
+// 需求5：血色要塞活动迁移
+if (!G.crimsonFortressUsed || typeof G.crimsonFortressUsed !== 'object') G.crimsonFortressUsed = {};
+if (G.crimsonFortress === undefined) G.crimsonFortress = null;
+// 需求1：主线剧情迁移
+if (G.mainQuest === undefined) G.mainQuest = null;
       // 需求6：技能书活动迁移
       if (!G.skillBookHuntUsed || typeof G.skillBookHuntUsed !== 'object') G.skillBookHuntUsed = {};
       if (G.skillBookHuntProgress === undefined) G.skillBookHuntProgress = null;
       // 需求12：宠物秘境活动迁移
       if (!G.petCaveUsed || typeof G.petCaveUsed !== 'object') G.petCaveUsed = {};
-      // 血统系统迁移
-      if (!G.bloodlineTrialUsed || typeof G.bloodlineTrialUsed !== 'object') G.bloodlineTrialUsed = {};
+      // 进阶试炼迁移（原 bloodlineTrialUsed → advanceTrialUsed）
+      if (G.bloodlineTrialUsed && !G.advanceTrialUsed) {
+        G.advanceTrialUsed = G.bloodlineTrialUsed;
+        delete G.bloodlineTrialUsed;
+      }
+      if (!G.advanceTrialUsed || typeof G.advanceTrialUsed !== 'object') G.advanceTrialUsed = {};
+      // 天赋节点ID迁移：fusion_drop → socket_nail_drop, hatch_drop → repair_glue_drop
+      if (G.talents) {
+        if (G.talents['fusion_drop'] && !G.talents['socket_nail_drop']) {
+          G.talents['socket_nail_drop'] = G.talents['fusion_drop'];
+          delete G.talents['fusion_drop'];
+        }
+        if (G.talents['hatch_drop'] && !G.talents['repair_glue_drop']) {
+          G.talents['repair_glue_drop'] = G.talents['hatch_drop'];
+          delete G.talents['hatch_drop'];
+        }
+      }
       // 宠物派遣奇遇系统迁移
       if (!G.dispatches || !Array.isArray(G.dispatches)) G.dispatches = [];
       if (!G.dispatchHistory || !Array.isArray(G.dispatchHistory)) G.dispatchHistory = [];
       if (!G.dispatchDailyUsed || typeof G.dispatchDailyUsed !== 'object') G.dispatchDailyUsed = {};
+      // v2.2.0 迁移：在线挂机彩蛋统计
+      if (!G.idleEggStats || typeof G.idleEggStats !== 'object') G.idleEggStats = { total: 0, gold: 0, exp: 0, diamond: 0, items: 0 };
+      // v2.2.0 迁移：挖密藏系统
+      if (G.digSession === undefined) G.digSession = null;
+      if (!G.digDailyUsed || typeof G.digDailyUsed !== 'object') G.digDailyUsed = {};
       migratePetAttributes();
       migrateInnateSkills();
       migratePetAdvance(); // 需求3：宠物进阶字段迁移
@@ -218,6 +267,11 @@ function loadGame() {
       restoreEquipmentAffixes();
       migrateTreasureMaps();
       migratePetRarity();
+      // 迁移：修复旧存档all_stat buff值（从50更新为200）
+      if (G.buffs && G.buffs.all_stat && G.buffs.all_stat.mult < 200 && G.buffs.all_stat.expireAt > Date.now()) {
+        G.buffs.all_stat.mult = 200;
+      }
+      // 迁移：修复旧存档all_stat buff默认值问题（getBuffMult默认返回1，all_stat应为0）
       checkDailyReset();
       checkArenaWeeklyReset();
     }
@@ -440,6 +494,110 @@ function checkDailyReset() {
     // 竞技场已挑战对手记录跨日清空（修复 checkArenaWeeklyReset 永不执行的 bug）
     G.arenaChallengedOpps = {};
   }
+  // 统一清理日期键控对象中的过期日期数据，防止存档膨胀
+  // 这些对象使用 {date: count} 模式，只需保留当天数据
+  var dailyKeyedFields = [
+    'advanceTrialUsed', 'formationActivityUsed', 'formationEscortUsed',
+    'skillBookHuntUsed', 'petCaveUsed', 'dispatchDailyUsed', 'crimsonFortressUsed',
+    'digDailyUsed'
+  ];
+  dailyKeyedFields.forEach(function(field) {
+    if (G[field] && typeof G[field] === 'object') {
+      Object.keys(G[field]).forEach(function(date) {
+        if (date !== today) delete G[field][date];
+      });
+    }
+  });
+  // 需求10：周常任务每周一重置
+  var weekKey = getWeekKey();
+  if (G.weeklyTaskDate !== weekKey) {
+    G.weeklyTasks = {};
+    G.weeklyTaskDate = weekKey;
+  }
+  // 清理废弃字段（已移除的系统遗留数据）
+  if (G.petEquipDungeonUsed) delete G.petEquipDungeonUsed;
+}
+
+// 需求10：获取当前周标识（周一日期字符串，同周内不变）
+function getWeekKey() {
+  var d = new Date();
+  var day = d.getDay() || 7; // 0=周日 → 7
+  d.setDate(d.getDate() - day + 1); // 回到周一
+  return d.toDateString();
+}
+
+// ==================== OFFLINE PROGRESSION ====================
+
+function calculateOfflineRewards() {
+  if (!G.lastSaveTime || G.lastSaveTime <= 0) return null;
+  var now = Date.now();
+  var elapsedMs = now - G.lastSaveTime;
+  // 最少离线5分钟才计算
+  if (elapsedMs < 5 * 60 * 1000) return null;
+  // 最多累计8小时
+  var maxMs = 8 * 60 * 60 * 1000;
+  if (elapsedMs > maxMs) elapsedMs = maxMs;
+  var elapsedMin = Math.floor(elapsedMs / 60000);
+  // 按当前地图等级计算每分钟收益（约每30秒一波怪）
+  var mapLv = G.player.currentMap || 1;
+  var playerLv = G.player.level || 1;
+  var baseLv = Math.max(playerLv, mapLv * 5);
+  // 经验：每分钟约2波怪，每波怪经验 ≈ baseLv * 8
+  var expPerMin = Math.floor(baseLv * 8 * 2 * (1 + G.player.rebirth * 0.2));
+  // 金币：每波怪金币 ≈ baseLv * 5
+  var goldPerMin = Math.floor(baseLv * 5 * 2 * (1 + G.player.rebirth * 0.1));
+  // 宠物经验：队伍宠物均分经验
+  var petExpPerMin = Math.floor(baseLv * 4 * 2);
+  // 蛋掉落概率：每分钟约0.1个
+  var eggChance = 0.1;
+  var totalExp = expPerMin * elapsedMin;
+  var totalGold = goldPerMin * elapsedMin;
+  var totalPetExp = petExpPerMin * elapsedMin;
+  var eggsEarned = Math.floor(eggChance * elapsedMin);
+  // 应用经验加成buff（离线时buff已过期，但计算时按基础值）
+  return {
+    minutes: elapsedMin,
+    exp: totalExp,
+    gold: totalGold,
+    petExp: totalPetExp,
+    eggs: eggsEarned,
+  };
+}
+
+function claimOfflineRewards() {
+  var rewards = calculateOfflineRewards();
+  if (!rewards) return;
+  // 发放奖励
+  if (rewards.exp > 0) addExp(rewards.exp);
+  if (rewards.gold > 0) addGold(rewards.gold);
+  // 宠物经验
+  if (rewards.petExp > 0 && G.player.activeTeam) {
+    G.player.activeTeam.forEach(function(petId) {
+      if (!petId) return;
+      var pet = G.pets.find(function(p) { return p.id === petId; });
+      if (pet && pet.level < G.player.level) {
+        var needed = pet.level * 100;
+        pet.exp = (pet.exp || 0) + rewards.petExp;
+        while (pet.exp >= needed && pet.level < G.player.level) {
+          pet.exp -= needed;
+          pet.level++;
+          needed = pet.level * 100;
+        }
+      }
+    });
+  }
+  // 蛋掉落
+  if (rewards.eggs > 0) {
+    for (var i = 0; i < rewards.eggs && i < 10; i++) {
+      if (typeof generateEgg === 'function') {
+        G.eggs.push(generateEgg(randomInt(0, 1)));
+      }
+    }
+  }
+  // 更新存档时间
+  G.lastSaveTime = Date.now();
+  saveGame();
+  return rewards;
 }
 
 // ==================== NEW PLAYER GIFT ====================
@@ -494,16 +652,55 @@ function createStarterPet(name, race, rarity) {
 function claimNewPlayerGift() {
   if (G.newPlayerGiftClaimed) return;
 
-  const starter1 = createStarterPet('小史莱姆', '史莱姆', 'common');
-  const starter2 = createStarterPet('小哥布林', '哥布林', 'common');
-  const starter3 = createStarterPet('小精灵', '精灵', 'uncommon');
+  // 需求10：新手礼包从T1中随机选1只防御类型放前排、1只伤害类放中排、1只辅助类放后排
+  var t1Names = PET_NAMES.filter(function(name) {
+    return getPetTier(name) === 1;
+  });
+  var defPets = t1Names.filter(function(name) {
+    var dex = getPetDex(name);
+    return dex.specialty === 'defense';
+  });
+  var dmgPets = t1Names.filter(function(name) {
+    var dex = getPetDex(name);
+    return dex.specialty === 'physical' || dex.specialty === 'speed';
+  });
+  var supPets = t1Names.filter(function(name) {
+    var dex = getPetDex(name);
+    return dex.specialty === 'magic';
+  });
+  // 兜底：如果某类型为空，从所有T1中选
+  if (defPets.length === 0) defPets = t1Names.slice();
+  if (dmgPets.length === 0) dmgPets = t1Names.filter(function(name) {
+    return defPets.indexOf(name) < 0;
+  });
+  if (supPets.length === 0) supPets = t1Names.filter(function(name) {
+    return defPets.indexOf(name) < 0 && dmgPets.indexOf(name) < 0;
+  });
+  if (dmgPets.length === 0) dmgPets = t1Names.slice();
+  if (supPets.length === 0) supPets = t1Names.slice();
+
+  var defName = pickRandom(defPets);
+  var dmgName = pickRandom(dmgPets.filter(function(n) { return n !== defName; }));
+  if (!dmgName) dmgName = pickRandom(dmgPets);
+  var supName = pickRandom(supPets.filter(function(n) { return n !== defName && n !== dmgName; }));
+  if (!supName) supName = pickRandom(supPets);
+
+  var defDex = getPetDex(defName);
+  var dmgDex = getPetDex(dmgName);
+  var supDex = getPetDex(supName);
+
+  const starter1 = createStarterPet(defName, defDex.race, 'common'); // 防御型→前排
+  const starter2 = createStarterPet(dmgName, dmgDex.race, 'common'); // 伤害型→中排
+  const starter3 = createStarterPet(supName, supDex.race, 'common'); // 辅助型→后排
 
   starter1.level = G.player.level;
   starter2.level = G.player.level;
   starter3.level = G.player.level;
 
   G.pets.push(starter1, starter2, starter3);
+  // 防御→前排(0), 伤害→中排(1), 辅助→后排(2)
   G.player.activeTeam = [starter1.id, starter2.id, starter3.id];
+  G.player.formation = ['front', 'mid', 'back'];
   addDiamond(10);
 
   // 初始5个宠物蛋
@@ -511,17 +708,18 @@ function claimNewPlayerGift() {
     G.eggs.push(generateEgg(randomInt(0, 1)));
   }
 
-  // 需求7：新手礼包激活5个buff
-  // 全属性+50（2小时）、双倍经验（22小时）、双倍金币（22小时）、孵化速度10倍（22小时）、双倍蛋掉落（2小时）
-  activateBuff('all_stat', 50, 120);       // 全属性+50, 2小时
-  activateBuff('exp_mult', 2, 22 * 60);    // 双倍经验, 22小时
-  activateBuff('gold_mult', 2, 22 * 60);  // 双倍金币, 22小时
-  activateBuff('hatch_mult', 10, 22 * 60);// 孵化速度10倍, 22小时
-  activateBuff('egg_drop_mult', 2, 120);  // 双倍蛋掉落, 2小时
+  // 需求2/3：新手礼包激活5个buff，统一120分钟，全属性+200，赠送5个孵化石
+  activateBuff('all_stat', 200, 120);       // 全属性+200, 120分钟
+  activateBuff('exp_mult', 2, 120);          // 双倍经验, 120分钟
+  activateBuff('gold_mult', 2, 120);         // 双倍金币, 120分钟
+  activateBuff('hatch_mult', 10, 120);       // 孵化速度10倍, 120分钟
+  activateBuff('egg_drop_mult', 2, 120);     // 双倍蛋掉落, 120分钟
+  // 需求3：赠送5个孵化石
+  G.hatchStones = (G.hatchStones || 0) + 5;
 
   G.newPlayerGiftClaimed = true;
   saveGame();
-  showToast('🎉 新手礼包已领取！3只宠物已自动出战，5项增益已激活，开始冒险吧！', 'success');
+  showToast('🎉 新手礼包已领取！获得防御型(' + defName + ')+伤害型(' + dmgName + ')+辅助型(' + supName + ')，5项增益已激活，开始冒险吧！', 'success');
   render();
 }
 

@@ -123,13 +123,34 @@ let liveBattle = null;
 let battleTurnTimer = null;
 let battleSpawnTimer = null;
 
+// v2.2.0 需求1：走路阶段状态（主线战斗前置动画）
+let walkPhase = null;  // { active: true, mapId, team, walkTimer, steps }
+let walkTimer = null;
+
+// v2.2.0 需求1：在线挂机彩蛋系统
+const IDLE_EGG_DROP_CHANCE = 0.025; // 2.5% 概率掉落彩蛋
+const IDLE_EGG_REWARDS = [
+  { type: 'gold', min: 200, max: 800, icon: '🪙', name: '金币' },
+  { type: 'exp', min: 100, max: 500, icon: '⭐', name: '经验' },
+  { type: 'diamond', min: 1, max: 5, icon: '💎', name: '钻石' },
+  { type: 'item', itemId: 'moon_dew', count: 1, icon: '🌙', name: '月华露' },
+  { type: 'item', itemId: 'hatch_stone', count: 1, icon: '🥚', name: '孵化石' },
+];
+
 function getTurnDelay() {
   const speeds = { 1: 1200, 2: 600, 4: 250, 8: 125, 16: 62, 32: 31 };
   return speeds[G.battleSpeed] || 1200;
 }
 
+// v2.2.0 需求1：走路动画时长（按战斗速度缩放）
+function getWalkDuration() {
+  const baseMs = 2500; // 基础2.5秒
+  const speedMult = G.battleSpeed <= 1 ? 1 : G.battleSpeed <= 2 ? 0.7 : G.battleSpeed <= 4 ? 0.5 : 0.3;
+  return Math.floor(baseMs * speedMult);
+}
+
 function startLiveBattle() {
-  if (liveBattle) return;
+  if (liveBattle || walkPhase) return;
   const team = getTeamPets();
   if (team.length === 0) {
     showToast('请先设置出战宠物！', 'error');
@@ -138,8 +159,39 @@ function startLiveBattle() {
   spawnMonster();
 }
 
+// v2.2.0 需求1：主线战斗走路动画阶段
+function startWalkPhase() {
+  const team = getTeamPets();
+  if (team.length === 0) return;
+  const map = MAPS.find(m => m.id === G.player.currentMap);
+  if (!map) { spawnMonsterDirect(); return; }
+  walkPhase = {
+    active: true,
+    mapId: G.player.currentMap,
+    mapName: map.name,
+    team: team,
+    steps: 0,
+  };
+  if (currentScreen === 'main') renderBattleArena();
+  // 走路动画结束后进入战斗
+  clearTimeout(walkTimer);
+  walkTimer = setTimeout(function() {
+    walkPhase = null;
+    spawnMonsterDirect();
+  }, getWalkDuration());
+}
+
+// v2.2.0 需求1：spawnMonster 包装器——主线先走路，特殊战斗直接生成
 function spawnMonster() {
-  // 副本/藏宝图/竞技场等特殊战斗不使用波次系统（保持单怪）
+  // 正在走路或战斗中，不重复触发
+  if (walkPhase || liveBattle) return;
+  // v2.2.0 需求3：移除不可达的死代码（liveBattle在此处必为null）
+  // 主线战斗：先走路再遇敌（副本/藏宝图/竞技场通过各自的入口函数直接调用 spawnMonsterDirect）
+  startWalkPhase();
+}
+
+// v2.2.0 需求1：直接生成怪物（跳过走路阶段），用于副本/藏宝图等
+function spawnMonsterDirect() {
   const isSpecialBattle = liveBattle && (liveBattle.isDungeon || liveBattle.isTreasure || liveBattle.isArena);
   let monsters;
   if (liveBattle && (liveBattle.isDungeon || liveBattle.isTreasure)) {
@@ -287,6 +339,10 @@ function giveMonsterKillRewards(monster) {
   updateDailyTask('battle_10', 1);
   G.player.battlePassExp += 10;
   checkBattlePassLevelUp();
+  // 需求1：主线任务进度更新（战斗类）
+  if (typeof updateMainQuest === 'function') updateMainQuest('battle', 1);
+  if (typeof updateMainQuest === 'function') updateMainQuest('battle_exp', 1);
+  if (typeof updateMainQuest === 'function') updateMainQuest('battle_gold', 1);
 }
 
 // 波次清空后处理关卡进度（原 processBattleRewardsLive 的进度逻辑）
@@ -339,13 +395,18 @@ function processWaveCleared() {
     updateAchievement('map_clear', 1);
   }
   maybeDropTreasureMap();
+  // v2.2.0 需求1：在线挂机彩蛋掉落（仅主线战斗，仅在线挂机时）
+  if (autoBattleInterval) maybeDropIdleEgg();
   saveGame();
   liveBattle = null;
   if (currentScreen === 'main') render();
   if (autoBattleInterval) {
     battleSpawnTimer = setTimeout(() => {
       spawnMonster();
-      if (currentScreen === 'main') render();
+      if (currentScreen === 'main') {
+        render();
+        setTimeout(() => renderBattleArena(), 50);
+      }
     }, 1000);
   }
 }
@@ -652,8 +713,8 @@ function getPetAtkPower(pet, stats, passives, auras, buffs, bloodline) {
       atkPower *= (1 + Math.max(0, (1 - hpPct) * eff.lowHpAtkBoost));
     }
   }
+  // 人物属性20%已通过getPetStats()附加到宠物四维属性中，不再重复计算
   const charBonus = getCharacterBonusForPet();
-  atkPower += (charBonus.力量 || 0) * 0.5 + (charBonus.atk || 0);
   if (charBonus.petDmg) atkPower *= (1 + charBonus.petDmg);
   // 偷取的攻击力加成
   if (buffs && buffs.stolenAtk) atkPower += buffs.stolenAtk;
@@ -1262,8 +1323,10 @@ function executeActiveSkill(pet, skill) {
   } else if (category === 'single_heal' || category === 'aoe_heal') {
     // 治疗量受灵力影响：基础百分比 + 灵力加成
     var spirit = getPetSpiritPower(pet, stats, passives, auras, buffs);
-    var healBonus = Math.floor(spirit * 0.5); // 灵力50%转为额外治疗
-    const healPct = skill.healPct || 0;
+    // 血统治疗效果加成（月光狐、圣光天使等）
+    var healBoostMult = (bloodline && bloodline.effects && bloodline.effects.healBoost) ? (1 + bloodline.effects.healBoost) : 1;
+    var healBonus = Math.floor(spirit * 0.5 * healBoostMult); // 灵力50%转为额外治疗
+    const healPct = (skill.healPct || 0) * healBoostMult;
     var revivedCount = 0;
     // 提升到外层声明：净化分支需要复用同一目标，避免 getSkillTarget 二次调用造成目标偏移
     var healTarget = null;
@@ -1964,6 +2027,14 @@ function applyTurnRegen() {
         mp.current = Math.min(mp.max, mp.current + mpRecover);
       }
     }
+    // 血统魔法回复（mpRegenPct，微光蝶、虚空主宰等）
+    if (bloodline && bloodline.effects && bloodline.effects.mpRegenPct) {
+      const mp2 = liveBattle.petMp[pet.id];
+      if (mp2 && mp2.current < mp2.max) {
+        const mpRecover2 = Math.floor(mp2.max * bloodline.effects.mpRegenPct);
+        mp2.current = Math.min(mp2.max, mp2.current + mpRecover2);
+      }
+    }
     if (buffs && buffs.hotTurns > 0) {
       const hotHeal = Math.floor(hp.max * buffs.hotPct);
       hp.current = Math.min(hp.max, hp.current + hotHeal);
@@ -2091,6 +2162,8 @@ function processTreasureRewards() {
   if (!liveBattle || !liveBattle.treasureMap) return;
   const tmap = liveBattle.treasureMap;
   let goldBonus = 0, expBonus = 0, equipDrop = 0, eggDrop = 0, skillDrop = 0, moonDewCount = 0, diamondBonus = 0;
+  // v2.2.0 需求10：新增词缀变量
+  let gemDrop = 0, petExpBonus = 0, forgeStoneDrop = 0, digItemDrop = 0;
   tmap.affixes.forEach(a => {
     if (a.id === 'gold_bonus') goldBonus += a.value;
     if (a.id === 'exp_bonus') expBonus += a.value;
@@ -2099,9 +2172,14 @@ function processTreasureRewards() {
     if (a.id === 'skill_drop') skillDrop += a.value;
     if (a.id === 'moon_dew') moonDewCount += a.value;
     if (a.id === 'diamond_bonus') diamondBonus += a.value;
+    if (a.id === 'gem_drop') gemDrop += a.value;
+    if (a.id === 'pet_exp_bonus') petExpBonus += a.value;
+    if (a.id === 'forge_stone_drop') forgeStoneDrop += a.value;
+    if (a.id === 'dig_item_drop') digItemDrop += a.value;
   });
   let isDouble = tmap.special && tmap.special.id === 'double_reward';
-  const mult = isDouble ? 2 : 1;
+  let isTriple = tmap.special && tmap.special.id === 'triple_reward';
+  const mult = isTriple ? 3 : (isDouble ? 2 : 1);
   // 藏宝图等级越高，奖励越多（按获得时人物等级计算）
   const tmLevel = tmap.playerLevel || G.player.level || 1;
   const levelBonus = 1 + (tmLevel - 1) * 0.02; // 每级+2%奖励
@@ -2170,6 +2248,57 @@ function processTreasureRewards() {
     else G.skillBooks.push({ id: skill.id, count: 1 });
     addBattleLog('loot', `📖 获得技能书：${skill.name}`);
     rewards.push({ icon: '📖', name: skill.name, amount: 1, color: '#f59e0b' });
+  }
+  // v2.2.0 需求10：宝石掉落
+  if (Math.random() < gemDrop) {
+    var gemDef = GEM_TYPES[randomInt(0, GEM_TYPES.length - 1)];
+    var gemLv = Math.random() < 0.2 ? 2 : 1;
+    addGemToBag(gemDef.id, gemLv, 1);
+    addBattleLog('loot', `💎 获得 ${gemDef.name}+${gemLv}`);
+    rewards.push({ icon: gemDef.icon, name: gemDef.name + '+' + gemLv, amount: 1, color: gemDef.color });
+  }
+  // v2.2.0 需求10：宠物经验加成
+  if (petExpBonus > 0 && G.player.activeTeam) {
+    var petExpTotal = Math.floor(tmLevel * 20 * mult * (1 + petExpBonus));
+    G.player.activeTeam.forEach(function(petId) {
+      if (!petId) return;
+      var pet = G.pets.find(function(p) { return p.id === petId; });
+      if (pet && pet.level < G.player.level) {
+        var needed = pet.level * 100;
+        pet.exp = (pet.exp || 0) + petExpTotal;
+        while (pet.exp >= needed && pet.level < G.player.level) {
+          pet.exp -= needed;
+          pet.level++;
+          needed = pet.level * 100;
+        }
+      }
+    });
+    addBattleLog('loot', `🐾 队伍宠物获得 ${petExpTotal} 经验`);
+    rewards.push({ icon: '🐾', name: '宠物经验', amount: petExpTotal, color: '#22c55e' });
+  }
+  // v2.2.0 需求10：强化石掉落
+  if (Math.random() < forgeStoneDrop) {
+    var stoneGrades = ['forge_stone_low', 'forge_stone_low', 'forge_stone_mid'];
+    var stoneId = stoneGrades[randomInt(0, stoneGrades.length - 1)];
+    var stoneCount = randomInt(1, 3) * (isTriple ? 3 : (isDouble ? 2 : 1));
+    var stoneExisting = G.inventory.find(function(i) { return i.id === stoneId; });
+    if (stoneExisting) stoneExisting.count += stoneCount;
+    else G.inventory.push({ id: stoneId, count: stoneCount });
+    addBattleLog('loot', `🔩 获得 ${getItemName(stoneId)} x${stoneCount}`);
+    rewards.push({ icon: '🔩', name: getItemName(stoneId), amount: stoneCount, color: '#94a3b8' });
+  }
+  // v2.2.0 需求10：密藏道具掉落（与挖密藏系统联动）
+  if (Math.random() < digItemDrop || (tmap.special && tmap.special.id === 'guaranteed_dig_map')) {
+    var digItemPool = ['dig_map', 'dig_shovel', 'dig_lens', 'dig_key'];
+    var digItemId = digItemPool[randomInt(0, digItemPool.length - 1)];
+    var digCount = (tmap.special && tmap.special.id === 'guaranteed_dig_map') ? 1 : randomInt(1, 2);
+    // guaranteed_dig_map 特殊词缀：必定掉落密藏图
+    if (tmap.special && tmap.special.id === 'guaranteed_dig_map') digItemId = 'dig_map';
+    var digExisting = G.inventory.find(function(i) { return i.id === digItemId; });
+    if (digExisting) digExisting.count += digCount;
+    else G.inventory.push({ id: digItemId, count: digCount });
+    addBattleLog('loot', `🗺️ 获得 ${getItemName(digItemId)} x${digCount}`);
+    rewards.push({ icon: digItemId === 'dig_map' ? '🗺️' : (digItemId === 'dig_shovel' ? '⛏️' : (digItemId === 'dig_lens' ? '🔍' : '🗝️')), name: getItemName(digItemId), amount: digCount, color: '#fde047' });
   }
   G.statistics.totalBattles++;
   updateAchievement('battle', 1);
@@ -2338,6 +2467,16 @@ function processDungeonWaveComplete() {
     liveBattle = null;
     if (currentScreen === 'main') render();
     showToast(`副本完成！${reward}`, 'success');
+    // v2.2.0 需求3：副本完成后恢复自动挂机（修复战斗卡死问题）
+    if (autoBattleInterval) {
+      battleSpawnTimer = setTimeout(function() {
+        spawnMonster();
+        if (currentScreen === 'main') {
+          render();
+          setTimeout(function() { renderBattleArena(); }, 50);
+        }
+      }, 1500);
+    }
   } else {
     addBattleLog('info', `⚔️ 第${liveBattle.dungeonWave + 1}/${liveBattle.dungeonMaxWaves}波怪物出现！`);
     const map = MAPS.find(m => m.id === G.player.currentMap);
@@ -2444,9 +2583,47 @@ function toggleAutoChests() {
 function stopLiveBattle() {
   clearTimeout(battleTurnTimer);
   clearTimeout(battleSpawnTimer);
+  clearTimeout(walkTimer);
   liveBattle = null;
+  walkPhase = null;
   battleTurnTimer = null;
   battleSpawnTimer = null;
+}
+
+// v2.2.0 需求1：在线挂机彩蛋掉落——仅在线挂机时触发
+function maybeDropIdleEgg() {
+  if (Math.random() > IDLE_EGG_DROP_CHANCE) return;
+  var reward = IDLE_EGG_REWARDS[Math.floor(Math.random() * IDLE_EGG_REWARDS.length)];
+  var amount = 0;
+  if (reward.type === 'gold') {
+    amount = randomInt(reward.min, reward.max);
+    var goldMult = 1 + G.player.rebirth * 0.1;
+    amount = Math.floor(amount * goldMult);
+    addGold(amount);
+  } else if (reward.type === 'exp') {
+    amount = randomInt(reward.min, reward.max);
+    var expMult = 1 + G.player.rebirth * 0.2;
+    amount = Math.floor(amount * expMult);
+    addExp(amount);
+  } else if (reward.type === 'diamond') {
+    amount = randomInt(reward.min, reward.max);
+    addDiamond(amount);
+  } else if (reward.type === 'item') {
+    amount = reward.count;
+    var existing = G.inventory.find(function(i) { return i.id === reward.itemId; });
+    if (existing) existing.count += amount;
+    else G.inventory.push({ id: reward.itemId, count: amount });
+    if (reward.itemId === 'hatch_stone') G.hatchStones = (G.hatchStones || 0) + amount;
+  }
+  // 彩蛋统计
+  if (!G.idleEggStats) G.idleEggStats = { total: 0, gold: 0, exp: 0, diamond: 0, items: 0 };
+  G.idleEggStats.total++;
+  if (reward.type === 'gold') G.idleEggStats.gold++;
+  else if (reward.type === 'exp') G.idleEggStats.exp++;
+  else if (reward.type === 'diamond') G.idleEggStats.diamond++;
+  else if (reward.type === 'item') G.idleEggStats.items++;
+  addBattleLog('loot', '🥚 发现了彩蛋！获得 ' + reward.icon + ' ' + reward.name + (amount > 1 ? ' x' + amount : ''));
+  showToast('🥚 彩蛋！获得 ' + reward.icon + ' ' + reward.name + (amount > 1 ? ' x' + amount : ''), 'success');
 }
 
 // Battle animation helpers

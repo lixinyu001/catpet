@@ -21,8 +21,15 @@ function getItemName(id) {
     blood_orb_low: '低级血统珠', blood_orb_mid: '中级血统珠', blood_orb_high: '高级血统珠',
     // 需求7：打孔系统道具
     socket_nail: '打孔钉', repair_glue: '修补胶',
+    // 装备洗练系统道具
+    refine_stone: '洗练石',
     // 需求3：宠物进阶丸
     advance_pill_low: '低级进阶丸', advance_pill_mid: '中级进阶丸', advance_pill_high: '高级进阶丸',
+    // 需求4：宠物装备材料中文名
+    mystic_crystal_low: '低级神秘水晶', mystic_crystal_mid: '中级神秘水晶', mystic_crystal_high: '高级神秘水晶',
+    ancient_rune_low: '低级远古符文', ancient_rune_mid: '中级远古符文', ancient_rune_high: '高级远古符文',
+    // v2.2.0 需求9：挖密藏系统道具
+    dig_map: '密藏图', dig_shovel: '探宝铲', dig_lens: '透视镜', dig_key: '密藏钥匙',
   };
   // 阵法书道具名
   if (id && id.indexOf(FORMATION_BOOK_PREFIX) === 0) {
@@ -138,7 +145,7 @@ function generatePetEquip(rarity, slot, level) {
       baseVal = Math.floor((6 + level * 1.5) * (1 + rarityIdx * 0.3) * lvlScale);
       break;
   }
-  // 随机词条：稀有1, 史诗2, 传说3, 神话4
+  // 随机词条：优秀0, 稀有1, 史诗2, 传说3, 神话4
   var affixCount = PET_EQUIP_AFFIX_COUNT[rarityIdx];
   var affixes = [];
   var usedAffixIds = {};
@@ -171,7 +178,7 @@ function generatePetEquip(rarity, slot, level) {
     }
     affixes.push({ id: affix.id, value: value });
   }
-  // 套装：15%概率出现（仅史诗及以上）
+  // 套装：20%概率出现（仅史诗及以上）
   // 任务14：套装按周分布，从当天可出现的套装中选取
   var setId = null;
   if (rarityIdx >= 1 && Math.random() < 0.20) {
@@ -322,12 +329,73 @@ function sellPetEquip(equipId) {
   if (idx < 0) return;
   var equip = G.petEquipBag[idx];
   var rarityIdx = PET_EQUIP_RARITIES.indexOf(equip.rarity);
-  var price = [500, 2000, 8000, 30000][rarityIdx] || 500;
-  price *= Math.max(1, equip.level || 1);
-  addGold(price);
+var price = [500, 2000, 8000, 30000][rarityIdx] || 500;
+price *= Math.max(1, equip.level || 1);
+addGold(price);
   G.petEquipBag.splice(idx, 1);
   saveGame();
   showToast('💰 出售获得 ' + price + ' 金币', 'success');
+  if (typeof render === 'function') render();
+}
+
+// 批量分解宠物装备：分解指定稀有度及以下的所有装备
+function batchDecomposePetEquip(maxRarity) {
+  var maxIdx = PET_EQUIP_RARITIES.indexOf(maxRarity);
+  if (maxIdx < 0) maxIdx = 0;
+  var toDecomp = G.petEquipBag.filter(function(e) {
+    return PET_EQUIP_RARITIES.indexOf(e.rarity) <= maxIdx;
+  });
+  if (toDecomp.length === 0) {
+    showToast('没有可分解的装备', 'error');
+    return;
+  }
+  var totalGained = {};
+  toDecomp.forEach(function(equip) {
+    var yields = PET_EQUIP_DECOMP_YIELD[equip.rarity] || PET_EQUIP_DECOMP_YIELD.rare;
+    Object.keys(yields).forEach(function(mat) {
+      var range = yields[mat];
+      var count = randomInt(range[0], range[1]);
+      if (count > 0) {
+        G.petEquipMaterials[mat] = (G.petEquipMaterials[mat] || 0) + count;
+        totalGained[mat] = (totalGained[mat] || 0) + count;
+      }
+    });
+  });
+  // 从背包中移除已分解的装备
+  var toRemoveIds = new Set(toDecomp.map(function(e) { return e.id; }));
+  G.petEquipBag = G.petEquipBag.filter(function(e) { return !toRemoveIds.has(e.id); });
+  saveGame();
+  var msg = Object.keys(totalGained).map(function(mat) {
+    return PET_EQUIP_MATERIAL_NAMES[mat] + ' x' + totalGained[mat];
+  }).join(', ');
+  showToast('♻️ 批量分解 ' + toDecomp.length + ' 件装备，获得：' + (msg || '无材料'), 'success');
+  if (typeof updateDailyTask === 'function') updateDailyTask('petequip_decomp', toDecomp.length);
+  if (typeof render === 'function') render();
+}
+
+// 批量出售宠物装备：出售指定稀有度及以下的所有装备
+function batchSellPetEquip(maxRarity) {
+  var maxIdx = PET_EQUIP_RARITIES.indexOf(maxRarity);
+  if (maxIdx < 0) maxIdx = 0;
+  var toSell = G.petEquipBag.filter(function(e) {
+    return PET_EQUIP_RARITIES.indexOf(e.rarity) <= maxIdx;
+  });
+  if (toSell.length === 0) {
+    showToast('没有可出售的装备', 'error');
+    return;
+  }
+  var totalGold = 0;
+  toSell.forEach(function(equip) {
+    var rarityIdx = PET_EQUIP_RARITIES.indexOf(equip.rarity);
+var price = [500, 2000, 8000, 30000][rarityIdx] || 500;
+price *= Math.max(1, equip.level || 1);
+totalGold += price;
+  });
+  addGold(totalGold);
+  var toRemoveIds = new Set(toSell.map(function(e) { return e.id; }));
+  G.petEquipBag = G.petEquipBag.filter(function(e) { return !toRemoveIds.has(e.id); });
+  saveGame();
+  showToast('💰 批量出售 ' + toSell.length + ' 件装备，获得 ' + totalGold + ' 金币', 'success');
   if (typeof render === 'function') render();
 }
 
@@ -567,24 +635,198 @@ function resetSockets(equipId) {
   if (typeof render === 'function') render();
 }
 
-// 获取装备孔洞上限
-function getMaxGemSlots() {
-  return MAX_GEM_SLOTS;
+// ==================== 装备洗练系统（45级开启） ====================
+
+// 洗练金币消耗：装备等级 × 200
+function getRefineGoldCost(item) {
+  return (item.level || 1) * 200;
 }
 
+// 洗练：重新随机装备所有词条（消耗1个洗练石 + 金币）
+function refineEquipment(equipId) {
+  // 等级检查
+  if (typeof isFeatureUnlocked === 'function' && !isFeatureUnlocked('equip_refine')) {
+    showToast('🔒 需要' + getFeatureUnlockLevel('equip_refine') + '级解锁装备洗练', 'error');
+    return;
+  }
+  var found = findEquipmentById(equipId);
+  if (!found) { showToast('❌ 未找到装备', 'error'); return; }
+  var item = found.item;
+  // 必须有词条才能洗练
+  if (!item.affixes || item.affixes.length === 0) {
+    showToast('❌ 该装备没有词条可洗练', 'error');
+    return;
+  }
+  // 检查洗练石
+  var stone = G.inventory.find(function(i) { return i.id === 'refine_stone'; });
+  if (!stone || stone.count < 1) {
+    showToast('❌ 需要1个洗练石', 'error');
+    return;
+  }
+  // 检查金币
+  var goldCost = getRefineGoldCost(item);
+  if (G.player.gold < goldCost) {
+    showToast('❌ 金币不足，需要 ' + goldCost.toLocaleString() + ' 金币', 'error');
+    return;
+  }
+  // 扣除洗练石和金币
+  stone.count -= 1;
+  if (stone.count <= 0) {
+    var idx = G.inventory.indexOf(stone);
+    if (idx >= 0) G.inventory.splice(idx, 1);
+  }
+  G.player.gold -= goldCost;
+
+  // 重新生成词条
+  var affixCount = item.affixes.length;
+  var newAffixes = [];
+  var usedAffixIds = {};
+  var level = item.level || 1;
+  var isOrange = item.rarity === 'orange';
+
+  for (var i = 0; i < affixCount; i++) {
+    var affix = null;
+    var attempts = 0;
+    do {
+      affix = pickRandom(AFFIX_TYPES);
+      attempts++;
+    } while (usedAffixIds[affix.id] && attempts < 30);
+    usedAffixIds[affix.id] = true;
+    var val = affix.id.endsWith('_pct') ? randomFloat(0.03, 0.12) :
+              affix.id === 'crit_rate' || affix.id === 'dodge_rate' ? randomFloat(0.02, 0.08) :
+              affix.id === 'pet_dmg' || affix.id === 'pet_def' || affix.id === 'pet_hp' ? randomFloat(0.05, 0.15) :
+              randomInt(level, level * 3);
+    newAffixes.push({ id: affix.id, name: affix.name, format: affix.format, value: Math.round(val * 100) / 100, special: affix.special || false });
+  }
+
+  // 橙色装备保持特殊词条（pet_dmg/pet_def/pet_hp）
+  if (isOrange && !newAffixes.some(function(a) { return a.special; })) {
+    var specialPool = AFFIX_TYPES.filter(function(a) { return a.special && !usedAffixIds[a.id]; });
+    if (specialPool.length > 0) {
+      for (var j = newAffixes.length - 1; j >= 0; j--) {
+        if (!newAffixes[j].special) {
+          var sp = pickRandom(specialPool);
+          newAffixes[j] = { id: sp.id, name: sp.name, format: sp.format, value: randomFloat(0.05, 0.15), special: true };
+          break;
+        }
+      }
+    }
+  }
+
+  item.affixes = newAffixes;
+  saveGame();
+  showToast('✨ 洗练成功！词条已刷新（消耗 ' + goldCost.toLocaleString() + ' 金币）', 'success');
+  if (typeof render === 'function') render();
+}
+
+// 获取装备孔洞上限
+function getMaxGemSlots() {
+return MAX_GEM_SLOTS;
+}
+
+// ==================== 人物修炼系统（20级开启） ====================
+
+var CULTIVATION_MAX_LEVEL = 50;
+var CULTIVATION_PER_LEVEL_BONUS = 2; // 每级+2属性
+var CULTIVATION_ATTRS = ['力量', '体质', '敏捷', '智力'];
+
+// 修炼金币消耗公式：随等级递增
+function getCultivationGoldCost(currentLevel) {
+  var lv = currentLevel || 0;
+  if (lv < 10) return (lv + 1) * 2000;       // 1-10级：2000~20000
+  if (lv < 20) return (lv + 1) * 5000;       // 11-20级：55000~105000
+  if (lv < 30) return (lv + 1) * 10000;      // 21-30级：210000~310000
+  if (lv < 40) return (lv + 1) * 20000;      // 31-40级：620000~820000
+  return (lv + 1) * 50000;                    // 41-50级：2050000~2550000
+}
+
+// 获取修炼总加成
+function getCultivationBonus() {
+  if (!G.player.cultivation) G.player.cultivation = { 力量: 0, 体质: 0, 敏捷: 0, 智力: 0 };
+  var c = G.player.cultivation;
+  return {
+    力量: (c.力量 || 0) * CULTIVATION_PER_LEVEL_BONUS,
+    体质: (c.体质 || 0) * CULTIVATION_PER_LEVEL_BONUS,
+    敏捷: (c.敏捷 || 0) * CULTIVATION_PER_LEVEL_BONUS,
+    智力: (c.智力 || 0) * CULTIVATION_PER_LEVEL_BONUS,
+  };
+}
+
+// 修炼属性
+function cultivateAttribute(attr) {
+  // 等级检查
+  if (typeof isFeatureUnlocked === 'function' && !isFeatureUnlocked('cultivation')) {
+    showToast('🔒 需要' + getFeatureUnlockLevel('cultivation') + '级解锁人物修炼', 'error');
+    return;
+  }
+  if (CULTIVATION_ATTRS.indexOf(attr) < 0) {
+    showToast('❌ 无效的修炼属性', 'error');
+    return;
+  }
+  if (!G.player.cultivation) G.player.cultivation = { 力量: 0, 体质: 0, 敏捷: 0, 智力: 0 };
+  var currentLv = G.player.cultivation[attr] || 0;
+  if (currentLv >= CULTIVATION_MAX_LEVEL) {
+    showToast('✅ ' + attr + '修炼已满级（' + CULTIVATION_MAX_LEVEL + '级）', 'info');
+    return;
+  }
+  var goldCost = getCultivationGoldCost(currentLv);
+  if (G.player.gold < goldCost) {
+    showToast('❌ 金币不足，需要 ' + goldCost.toLocaleString() + ' 金币', 'error');
+    return;
+  }
+  G.player.gold -= goldCost;
+  G.player.cultivation[attr] = currentLv + 1;
+  saveGame();
+  var newLv = G.player.cultivation[attr];
+  var bonus = newLv * CULTIVATION_PER_LEVEL_BONUS;
+  showToast('🌀 ' + attr + '修炼提升至 ' + newLv + ' 级！当前加成：' + attr + ' +' + bonus + '（消耗 ' + goldCost.toLocaleString() + ' 金币）', 'success');
+  if (typeof render === 'function') render();
+}
+
+// 一键修炼（连续修炼直到金币不足或满级）
+function cultivateMax(attr) {
+  if (typeof isFeatureUnlocked === 'function' && !isFeatureUnlocked('cultivation')) {
+    showToast('🔒 需要' + getFeatureUnlockLevel('cultivation') + '级解锁人物修炼', 'error');
+    return;
+  }
+  if (CULTIVATION_ATTRS.indexOf(attr) < 0) return;
+  if (!G.player.cultivation) G.player.cultivation = { 力量: 0, 体质: 0, 敏捷: 0, 智力: 0 };
+  var count = 0;
+  var totalGold = 0;
+  while (G.player.cultivation[attr] < CULTIVATION_MAX_LEVEL) {
+    var lv = G.player.cultivation[attr];
+    var cost = getCultivationGoldCost(lv);
+    if (G.player.gold < cost) break;
+    G.player.gold -= cost;
+    G.player.cultivation[attr] = lv + 1;
+    totalGold += cost;
+    count++;
+    if (count >= 100) break; // 安全阀
+  }
+  if (count > 0) {
+    saveGame();
+    var newLv = G.player.cultivation[attr];
+    showToast('🌀 ' + attr + '修炼连升 ' + count + ' 级！当前等级：' + newLv + '（消耗 ' + totalGold.toLocaleString() + ' 金币）', 'success');
+  } else {
+    showToast('❌ 金币不足，无法修炼', 'error');
+  }
+  if (typeof render === 'function') render();
+}
+
+
 // ==================== 宠物进阶系统（需求3） ====================
-// 进阶阈值：T1→T3 需要 500 进阶值；T3→T5 需要 2000 进阶值
-const ADVANCE_THRESHOLDS = { 1: 500, 2: 2000 };
+// 进阶阈值：T3→T6 需要 2000 进阶值（单次进阶）
+// 需求7：T3 mid 宠物无幼年体，孵化即为 mid(T3)，单次进阶 mid→top(T6)
+const ADVANCE_THRESHOLDS = { 2: 2000 };
 
 // 获取进阶链信息：返回 { chain, nextName, nextStage, threshold } 或 null
-// 需求2：T3 mid 宠物可直接孵化（无幼年体），单次进阶 mid → top
-// base（T1/T2）不再可进阶；mid（T3）可进阶到 top（T5）
+// 需求7：仅 mid 名宠物(T3)可进阶到 top(T6)，base 不可进阶，top 已是最终形态
 function getPetAdvanceInfo(pet) {
   if (!pet || !pet.name) return null;
   if (typeof PET_ADVANCE_CHAINS === 'undefined') return null;
   var stage = pet.advanceStage || 0;
-  if (stage >= 2) return null; // 已是最高阶段
-  // 需求2：仅 mid 名宠物可进阶（无论孵化获得还是旧存档从 base 进阶而来）
+  if (stage >= 2) return null; // 已是最高阶段(T6)
+  // 仅 mid 名宠物可进阶（T3→T6）
   for (var i = 0; i < PET_ADVANCE_CHAINS.length; i++) {
     var c = PET_ADVANCE_CHAINS[i];
     if (c.mid === pet.name) {
@@ -650,8 +892,8 @@ function advancePet(pet, advInfo) {
   pet.name = newName;
   pet.advanceStage = newStage;
   pet.advanceValue = 0;
-  // 需求2：进阶系数统一为1.30（每次进阶成长和资质提高30%）
-  var advanceCoeff = 1.30;
+  // 需求7/8：T3→T6 进阶系数1.35（资质上限2400，成长按T6级）
+  var advanceCoeff = 1.35;
   // 进阶后：刷新图鉴并强化成长/资质
   var dex = getPetDex(newName);
   if (dex) {
@@ -672,8 +914,10 @@ function advancePet(pet, advInfo) {
         // 微随机扰动 ±5%（避免完全确定）
         newScore = newScore * (0.95 + Math.random() * 0.10);
         var newVal = Math.floor(newLo + newSpan * newScore);
-        // 突破上限：允许超过 dex 上限，但封顶 3500（普通上限3000，突破+500）
-        newVal = Math.min(3500, Math.max(newLo, newVal));
+        // 需求8：T3进阶宠(top/T6)资质上限2400，T2进阶宠(mid/T3)资质上限1800
+        var aptCeiling = (newStage === 2) ? 2400 : 1800;
+        // 允许小幅突破图鉴上限但不超过资质天花板
+        newVal = Math.min(aptCeiling, Math.max(newLo, newVal));
         pet.aptitude[k] = newVal;
       });
     }
@@ -687,8 +931,9 @@ function advancePet(pet, advInfo) {
       var gNewSpan = Math.max(0.01, gNewMax - gNewMin);
       var gNewScore = gOldScore * advanceCoeff * (0.95 + Math.random() * 0.10);
       var newGrowth = Math.round((gNewMin + gNewSpan * gNewScore) * 100) / 100;
-      // 突破上限：允许超过 dex 上限，但封顶 4.0（普通上限3.5，突破+0.5）
-      newGrowth = Math.min(4.0, Math.max(gNewMin, newGrowth));
+      // 需求7：T6进阶宠成长上限4.5（T6级成长比T5更高）
+      var growthCeiling = (newStage === 2) ? 4.5 : 3.0;
+      newGrowth = Math.min(growthCeiling, Math.max(gNewMin, newGrowth));
       pet.growth = newGrowth;
     }
     // 刷新技能：进阶后按新图鉴的天生技能列表重置（保留已学技能）
@@ -722,7 +967,7 @@ function advancePet(pet, advInfo) {
 // 进阶试炼活动（替换血统试炼，按战力10档奖励进阶丸）
 function startAdvanceTrial() {
   var today = new Date().toDateString();
-  if (G.bloodlineTrialUsed && G.bloodlineTrialUsed[today]) {
+  if (G.advanceTrialUsed && G.advanceTrialUsed[today]) {
     showToast('今日已完成进阶试炼', 'error');
     return;
   }
@@ -747,8 +992,8 @@ function startAdvanceTrial() {
   var existing = G.inventory.find(function(i) { return i.id === pillId; });
   if (existing) existing.count += tier.count;
   else G.inventory.push({ id: pillId, count: tier.count });
-  if (!G.bloodlineTrialUsed) G.bloodlineTrialUsed = {};
-  G.bloodlineTrialUsed[today] = true;
+  if (!G.advanceTrialUsed) G.advanceTrialUsed = {};
+  G.advanceTrialUsed[today] = true;
   // 经验和金币奖励
   addExp(500 + G.player.level * 20);
   addGold(1000 + G.player.level * 50);
@@ -955,6 +1200,46 @@ function startFormationActivity() {
 }
 
 // ==================== 阵法押镖活动（需求2）====================
+
+// 阵法碎片：分解阵法
+function decomposeFormation(formId) {
+  if (!formId || !G.formations[formId]) {
+    showToast('该阵法未学习，无法分解', 'error');
+    return;
+  }
+  if (G.activeFormation === formId) {
+    showToast('已激活的阵法无法分解，请先切换', 'error');
+    return;
+  }
+  var formDef = FORMATIONS.find(function(f) { return f.id === formId; });
+  if (!formDef) { showToast('阵法数据异常', 'error'); return; }
+  var learned = G.formations[formId];
+  // 分解获得碎片数：基础1个 + 等级×1个
+  var fragments = 1 + (learned.level || 1);
+  G.formationFragments = (G.formationFragments || 0) + fragments;
+  // 退还部分阵法书（已投入的）
+  var refundBooks = Math.floor((learned.level || 1) / 2);
+  if (refundBooks > 0) addFormationBook(formId, refundBooks);
+  delete G.formations[formId];
+  saveGame();
+  showToast('🔄 分解《' + formDef.name + '》获得 ' + fragments + ' 个阵法碎片' + (refundBooks > 0 ? '，退还 ' + refundBooks + ' 本阵法书' : ''), 'success');
+  if (typeof render === 'function') render();
+}
+
+// 阵法碎片：合成随机阵法书（5个碎片合成1本）
+function synthesizeFormation() {
+  if ((G.formationFragments || 0) < 5) {
+    showToast('阵法碎片不足，需要5个（当前' + (G.formationFragments || 0) + '个）', 'error');
+    return;
+  }
+  G.formationFragments -= 5;
+  var formDef = pickRandom(FORMATIONS);
+  addFormationBook(formDef.id, 1);
+  saveGame();
+  showToast('🎴 合成成功！获得《' + formDef.name + '》阵法书×1', 'success');
+  if (typeof render === 'function') render();
+}
+
 // 开始押镖
 function startFormationEscort() {
   var today = new Date().toDateString();
@@ -1029,7 +1314,9 @@ function _finishFormationEscortBattle(success, stage) {
     if (G.formationEscortProgress.failCount >= 3) {
       // 需求5：失败3次，活动完全失败，消耗次数
       showToast('💥 第' + stage + '关战斗失败！累计失败3次，押镖失败！', 'error');
-      addActivityLog('formation', '第' + stage + '关战斗失败，押镖彻底失败（消耗1次活动次数）', 'fail');
+      // 需求7：押镖失败赠送1个阵法碎片
+      G.formationFragments = (G.formationFragments || 0) + 1;
+      addActivityLog('formation', '第' + stage + '关战斗失败，押镖彻底失败（消耗1次活动次数），获得1个阵法碎片', 'fail');
       if (!G.formationEscortUsed) G.formationEscortUsed = {};
       G.formationEscortUsed[today] = (G.formationEscortUsed[today] || 0) + 1;
       G.formationEscortProgress = null;
@@ -1544,7 +1831,7 @@ function decomposeExtractedBloodOrb(orbItemId) {
 // 血统试炼活动：每日1次，挑战获得血统珠
 function startBloodlineTrial() {
   var today = new Date().toDateString();
-  if (G.bloodlineTrialUsed && G.bloodlineTrialUsed[today]) {
+  if (G.advanceTrialUsed && G.advanceTrialUsed[today]) {
     showToast('今日已完成血统试炼', 'error');
     return;
   }
@@ -1573,8 +1860,8 @@ function startBloodlineTrial() {
     else tierId = 'blood_orb_low';
     addBloodOrb(tierId, 1);
   }
-  if (!G.bloodlineTrialUsed) G.bloodlineTrialUsed = {};
-  G.bloodlineTrialUsed[today] = true;
+  if (!G.advanceTrialUsed) G.advanceTrialUsed = {};
+  G.advanceTrialUsed[today] = true;
   // 经验和金币奖励
   addExp(500 + G.player.level * 20);
   addGold(1000 + G.player.level * 50);
@@ -1583,11 +1870,24 @@ function startBloodlineTrial() {
   if (typeof render === 'function') render();
 }
 
-// ==================== DAILY TASKS ====================
+// ==================== DAILY & WEEKLY TASKS ====================
 
+// 需求10：智能路由 —— 自动判断 taskId 属于日常还是周常，分别写入对应进度对象
+// 不在任何列表中的 taskId（已移除的边缘任务）会被静默忽略
 function updateDailyTask(taskId, amount) {
-  if (!G.dailyTasks[taskId]) G.dailyTasks[taskId] = 0;
-  G.dailyTasks[taskId] += amount;
+  // 先检查是否为周常任务
+  if (typeof WEEKLY_TASKS !== 'undefined' && WEEKLY_TASKS.some(function(t) { return t.id === taskId; })) {
+    if (!G.weeklyTasks) G.weeklyTasks = {};
+    if (!G.weeklyTasks[taskId]) G.weeklyTasks[taskId] = 0;
+    G.weeklyTasks[taskId] += amount;
+    return;
+  }
+  // 再检查是否为日常任务
+  if (typeof DAILY_TASKS !== 'undefined' && DAILY_TASKS.some(function(t) { return t.id === taskId; })) {
+    if (!G.dailyTasks[taskId]) G.dailyTasks[taskId] = 0;
+    G.dailyTasks[taskId] += amount;
+  }
+  // 不在任何列表中 → 静默忽略（已移除的边缘任务）
 }
 
 function claimDailyTask(taskId) {
@@ -1600,6 +1900,47 @@ function claimDailyTask(taskId) {
   if (task.reward.diamond) addDiamond(task.reward.diamond);
   if (task.reward.gold) addGold(task.reward.gold);
   return true;
+}
+
+// 需求10：领取周常任务奖励
+function claimWeeklyTask(taskId) {
+  if (typeof WEEKLY_TASKS === 'undefined') return false;
+  const task = WEEKLY_TASKS.find(function(t) { return t.id === taskId; });
+  if (!task) return false;
+  if (!G.weeklyTasks) G.weeklyTasks = {};
+  const progress = G.weeklyTasks[taskId] || 0;
+  if (progress < task.target) return false;
+  if (G.weeklyTasks[taskId + '_claimed']) return false;
+  G.weeklyTasks[taskId + '_claimed'] = true;
+  if (task.reward.diamond) addDiamond(task.reward.diamond);
+  if (task.reward.gold) addGold(task.reward.gold);
+  return true;
+}
+
+// 需求10：一键领取所有已完成的日常任务奖励
+function claimAllDailyTasks() {
+  var count = 0;
+  DAILY_TASKS.forEach(function(task) {
+    var progress = G.dailyTasks[task.id] || 0;
+    if (progress >= task.target && !G.dailyTasks[task.id + '_claimed']) {
+      if (claimDailyTask(task.id)) count++;
+    }
+  });
+  return count;
+}
+
+// 需求10：一键领取所有已完成的周常任务奖励
+function claimAllWeeklyTasks() {
+  if (typeof WEEKLY_TASKS === 'undefined') return 0;
+  if (!G.weeklyTasks) G.weeklyTasks = {};
+  var count = 0;
+  WEEKLY_TASKS.forEach(function(task) {
+    var progress = G.weeklyTasks[task.id] || 0;
+    if (progress >= task.target && !G.weeklyTasks[task.id + '_claimed']) {
+      if (claimWeeklyTask(task.id)) count++;
+    }
+  });
+  return count;
 }
 
 function checkBattlePassLevelUp() {
@@ -2070,4 +2411,637 @@ function recallDispatch(dispatchId) {
   return true;
 }
 
+// ==================== 需求1：主线剧情任务链 ====================
 
+// 初始化主线任务（新玩家或旧存档迁移时调用）
+function initMainQuest() {
+  if (G.mainQuest) return; // 已有主线任务，不重复初始化
+  if (typeof MAIN_QUEST_CHAIN === 'undefined') return;
+  // 从链的第一个任务开始
+  var firstQuest = MAIN_QUEST_CHAIN[0];
+  if (!firstQuest) return;
+  G.mainQuest = {
+    chainIdx: 0,
+    progress: 0,
+    questData: firstQuest,
+    claimed: false,
+  };
+  saveGame();
+}
+
+// 获取当前主线任务
+function getCurrentMainQuest() {
+  if (!G.mainQuest) {
+    initMainQuest();
+  }
+  return G.mainQuest;
+}
+
+// 生成随机主线任务（当没有新功能解锁时使用）
+function generateRandomMainQuest() {
+  if (typeof MAIN_QUEST_RANDOM_TEMPLATES === 'undefined') return null;
+  var template = MAIN_QUEST_RANDOM_TEMPLATES[Math.floor(Math.random() * MAIN_QUEST_RANDOM_TEMPLATES.length)];
+  var targetIdx = Math.floor(Math.random() * template.targets.length);
+  var target = template.targets[targetIdx];
+  var desc = template.desc.replace('{N}', target);
+  // 计算奖励（基于目标数量）
+  var reward = {};
+  if (template.reward.type === 'exp') {
+    reward.exp = template.reward.base + template.reward.perKill * target;
+  } else if (template.reward.type === 'gold') {
+    reward.gold = template.reward.base + template.reward.perKill * target;
+  } else if (template.reward.type === 'diamond') {
+    reward.diamond = template.reward.base + template.reward.perHatch * target;
+  }
+  return {
+    type: 'random',
+    taskType: template.taskType,
+    name: template.name,
+    desc: desc,
+    target: target,
+    reward: reward,
+    level: G.player.level,
+  };
+}
+
+// 更新主线任务进度
+function updateMainQuest(taskType, amount) {
+  if (!G.mainQuest) return;
+  if (G.mainQuest.claimed) return; // 已完成待领取，不再更新
+  var quest = G.mainQuest.questData;
+  if (!quest) return;
+  // 判断任务类型是否匹配
+  var questTaskType = quest.taskType || 'battle'; // 默认为战斗类
+  if (questTaskType !== taskType) return;
+  G.mainQuest.progress += amount;
+  if (G.mainQuest.progress > quest.target) G.mainQuest.progress = quest.target;
+}
+
+// 领取主线任务奖励并激活下一个任务
+function claimMainQuest() {
+  if (!G.mainQuest) return false;
+  var quest = G.mainQuest.questData;
+  if (!quest) return false;
+  if (G.mainQuest.progress < quest.target) return false;
+  if (G.mainQuest.claimed) return false;
+  // 发放奖励
+  var r = quest.reward || {};
+  if (r.exp) addExp(r.exp);
+  if (r.gold) addGold(r.gold);
+  if (r.diamond) addDiamond(r.diamond);
+  G.mainQuest.claimed = true;
+  showToast('✅ 主线任务「' + quest.name + '」完成！', 'success');
+  // 激活下一个任务
+  activateNextMainQuest();
+  saveGame();
+  return true;
+}
+
+// 激活下一个主线任务
+function activateNextMainQuest() {
+  if (typeof MAIN_QUEST_CHAIN === 'undefined') return;
+  var nextIdx = (G.mainQuest ? G.mainQuest.chainIdx + 1 : 0);
+  // 检查链中是否有下一个任务
+  if (nextIdx < MAIN_QUEST_CHAIN.length) {
+    var nextQuest = MAIN_QUEST_CHAIN[nextIdx];
+    // 检查等级要求
+    if (G.player.level >= nextQuest.level) {
+      G.mainQuest = {
+        chainIdx: nextIdx,
+        progress: 0,
+        questData: nextQuest,
+        claimed: false,
+      };
+      return;
+    }
+  }
+  // 链已走完或等级不够 → 生成随机任务
+  var randomQuest = generateRandomMainQuest();
+  if (randomQuest) {
+    G.mainQuest = {
+      chainIdx: nextIdx, // 记录位置（随机任务不影响链进度）
+      progress: 0,
+      questData: randomQuest,
+      claimed: false,
+    };
+  } else {
+    G.mainQuest = null; // 无任务可做
+  }
+}
+
+// 检查并升级主线任务（当玩家升级后，可能有新的链任务可用）
+function checkMainQuestUpgrade() {
+  if (!G.mainQuest) {
+    initMainQuest();
+    return;
+  }
+  // 如果当前是随机任务，检查是否有新的链任务可用
+  if (G.mainQuest.questData && G.mainQuest.questData.type === 'random') {
+    var nextIdx = G.mainQuest.chainIdx;
+    if (nextIdx < MAIN_QUEST_CHAIN.length) {
+      var nextQuest = MAIN_QUEST_CHAIN[nextIdx];
+      if (G.player.level >= nextQuest.level && !G.mainQuest.claimed) {
+        // 有新的链任务可接，但当前随机任务未完成时不替换
+        // 只有当当前随机任务也完成时才切换到链任务
+        return;
+      }
+    }
+  }
+}
+
+// ==================== 需求5：血色要塞活动 ====================
+
+// 开始血色要塞
+function startCrimsonFortress(difficultyId) {
+  if (typeof CRIMSON_FORTRESS_DIFFICULTIES === 'undefined') return { ok: false, msg: '配置缺失' };
+  var diff = CRIMSON_FORTRESS_DIFFICULTIES.find(function(d) { return d.id === difficultyId; });
+  if (!diff) return { ok: false, msg: '难度不存在' };
+  // 检查每日次数
+  var today = new Date().toDateString();
+  if (!G.crimsonFortressUsed) G.crimsonFortressUsed = {};
+  var used = G.crimsonFortressUsed[today] || 0;
+  if (typeof CRIMSON_FORTRESS_DAILY_MAX !== 'undefined' && used >= CRIMSON_FORTRESS_DAILY_MAX) {
+    return { ok: false, msg: '今日挑战次数已用完' };
+  }
+  G.crimsonFortressUsed[today] = used + 1;
+  // 初始化活动战斗状态
+  G.crimsonFortress = {
+    difficulty: difficultyId,
+    round: 0,
+    kills: 0,
+    buffs: [],        // 已选增益列表
+    active: true,
+    startTime: Date.now(),
+  };
+  saveGame();
+  return { ok: true };
+}
+
+// 生成血色要塞怪物
+function generateCrimsonFortressMonster() {
+  if (!G.crimsonFortress || !G.crimsonFortress.active) return null;
+  var diff = CRIMSON_FORTRESS_DIFFICULTIES.find(function(d) { return d.id === G.crimsonFortress.difficulty; });
+  if (!diff) return null;
+  var round = G.crimsonFortress.round;
+  var playerLv = G.player.level;
+  // 怪物基础等级 = 玩家等级
+  var monsterLv = playerLv;
+  // 每5关怪物整体强化5%
+  var powerMult = diff.powerMult * (1 + Math.floor(round / 5) * 0.05);
+  // 怪物属性
+  var lvScale = 1 + monsterLv * 0.012;
+  var baseHp = Math.floor((40 + monsterLv * 20) * 5 * lvScale * powerMult);
+  var baseAtk = Math.floor((4 + monsterLv * 3.8) * 5 * lvScale * powerMult);
+  var finalHp = baseHp + randomInt(-Math.floor(baseHp * 0.05), Math.floor(baseHp * 0.05));
+  // 随机种族
+  var races = ['史莱姆', '哥布林', '精灵', '野兽', '龙族', '亡灵'];
+  var race = races[Math.floor(Math.random() * races.length)];
+  var monsterNames = {
+    '史莱姆': ['血色史莱姆', '腐蚀凝胶', '暗红泡泡'],
+    '哥布林': ['血色哥布林', '狂暴战士', '猩红刺客'],
+    '精灵': ['血色精灵', '暗影弓手', '堕落法师'],
+    '野兽': ['血色野兽', '猩红巨狼', '暗影猛虎'],
+    '龙族': ['血色幼龙', '猩红龙裔', '暗影龙兽'],
+    '亡灵': ['血色亡灵', '猩红骷髅', '暗影幽灵'],
+  };
+  var namePool = monsterNames[race] || ['血色怪物'];
+  var name = namePool[Math.floor(Math.random() * namePool.length)];
+  // Boss波（每5关出一个Boss）
+  var isBoss = round > 0 && round % 5 === 4;
+  if (isBoss) {
+    name = '血色领主·' + name;
+    finalHp = Math.floor(finalHp * 3);
+    baseAtk = Math.floor(baseAtk * 2.5);
+  }
+  return {
+    name: name,
+    level: monsterLv,
+    enemyType: isBoss ? 'boss' : 'mob',
+    race: race,
+    skills: [],
+    passives: [],
+    bossConfig: null,
+    hp: finalHp,
+    maxHp: finalHp,
+    atk: baseAtk + randomInt(-Math.floor(baseAtk * 0.1), Math.floor(baseAtk * 0.1)),
+    def: Math.floor(monsterLv * 2.0 * (isBoss ? 2.0 : 1.2) * powerMult),
+    speed: Math.floor(monsterLv * 2 + 10 + (isBoss ? 5 : 0)),
+  };
+}
+
+// 获取血色要塞增益buff选择（每5关弹出3选1）
+function rollCrimsonFortressBuffs() {
+  if (typeof CRIMSON_FORTRESS_BUFF_POOL === 'undefined') return [];
+  // 按品质权重随机选3个不重复的buff
+  var pool = CRIMSON_FORTRESS_BUFF_POOL.slice();
+  var selected = [];
+  var weightMap = { common: 50, uncommon: 30, rare: 15, epic: 5 };
+  while (selected.length < 3 && pool.length > 0) {
+    var totalWeight = pool.reduce(function(sum, b) { return sum + (weightMap[b.quality] || 10); }, 0);
+    var r = Math.random() * totalWeight;
+    var acc = 0;
+    for (var i = 0; i < pool.length; i++) {
+      acc += (weightMap[pool[i].quality] || 10);
+      if (r <= acc) {
+        selected.push(pool[i]);
+        pool.splice(i, 1);
+        break;
+      }
+    }
+  }
+  return selected;
+}
+
+// 选择血色要塞增益buff
+function selectCrimsonFortressBuff(buffId) {
+  if (!G.crimsonFortress || !G.crimsonFortress.active) return false;
+  if (!G.crimsonFortress.pendingBuffs) return false;
+  var buff = G.crimsonFortress.pendingBuffs.find(function(b) { return b.id === buffId; });
+  if (!buff) return false;
+  // 累加buff效果
+  G.crimsonFortress.buffs.push(buff);
+  G.crimsonFortress.pendingBuffs = null;
+  saveGame();
+  return true;
+}
+
+// 获取血色要塞buff总效果
+function getCrimsonFortressBuffEffects() {
+  if (!G.crimsonFortress || !G.crimsonFortress.buffs) return {};
+  var total = {};
+  G.crimsonFortress.buffs.forEach(function(b) {
+    if (b.effect) {
+      Object.keys(b.effect).forEach(function(key) {
+        total[key] = (total[key] || 0) + b.effect[key];
+      });
+    }
+  });
+  return total;
+}
+
+// 结束血色要塞（战斗失败时调用）
+function endCrimsonFortress() {
+  if (!G.crimsonFortress || !G.crimsonFortress.active) return null;
+  G.crimsonFortress.active = false;
+  var diff = CRIMSON_FORTRESS_DIFFICULTIES.find(function(d) { return d.id === G.crimsonFortress.difficulty; });
+  var expMult = diff ? diff.expMult : 3.0;
+  var kills = G.crimsonFortress.kills;
+  // 经验奖励 = 正常经验 × 3倍
+  var baseExp = kills * (G.player.level * 8 + 40);
+  var totalExp = Math.floor(baseExp * expMult);
+  // 金币奖励
+  var totalGold = kills * (G.player.level * 5 + 20);
+  if (totalExp > 0) addExp(totalExp);
+  if (totalGold > 0) addGold(totalGold);
+  var result = {
+    kills: kills,
+    exp: totalExp,
+    gold: totalGold,
+    buffs: G.crimsonFortress.buffs.slice(),
+  };
+  G.crimsonFortress = null;
+  if (typeof updateDailyTask === 'function') updateDailyTask('fortress', 1);
+  if (typeof addActivityLog === 'function') {
+    addActivityLog('fortress', '🏰 血色要塞结束：击杀 ' + kills + ' 怪，经验 +' + totalExp + '，金币 +' + totalGold, 'reward');
+  }
+  saveGame();
+  return result;
+}
+
+// 获取今日血色要塞剩余次数
+function getCrimsonFortressRemaining() {
+  var today = new Date().toDateString();
+  if (!G.crimsonFortressUsed) G.crimsonFortressUsed = {};
+  var used = G.crimsonFortressUsed[today] || 0;
+  var max = (typeof CRIMSON_FORTRESS_DAILY_MAX !== 'undefined') ? CRIMSON_FORTRESS_DAILY_MAX : 2;
+  return Math.max(0, max - used);
+}
+
+// 需求5：开始血色要塞战斗（一轮）
+function beginCrimsonFortressBattle() {
+  if (!G.crimsonFortress || !G.crimsonFortress.active) return;
+  var monster = generateCrimsonFortressMonster();
+  if (!monster) return;
+  var cp = Math.floor(getPlayerCombatPower());
+  // 计算buff效果加成
+  var buffEffects = getCrimsonFortressBuffEffects();
+  var buffAtkPct = buffEffects.atkPct || 0;
+  var buffDefPct = buffEffects.defPct || 0;
+  var buffHpPct = buffEffects.hpPct || 0;
+  var buffCritRate = buffEffects.critRate || 0;
+  var buffDmgReduce = buffEffects.dmgReduce || 0;
+  var buffExpMult = buffEffects.expMult || 0;
+  // 应用buff到玩家战力
+  var effectiveCp = cp * (1 + buffAtkPct + buffDefPct + buffHpPct) * (1 + buffCritRate * 2) * (1 + buffExpMult);
+  // 怪物战力 = atk * hp / 100（粗略估算）
+  var monsterPower = Math.floor(monster.atk * monster.hp / 100 * (1 - buffDmgReduce));
+  // 胜率计算
+  var winChance = effectiveCp / (effectiveCp + monsterPower * 0.8);
+  winChance = Math.max(0.1, Math.min(0.95, winChance));
+  // 活动战斗
+  startActivityBattleModal({
+    type: 'fortress',
+    stage: G.crimsonFortress.round + 1,
+    enemyName: monster.name,
+    enemyIcon: monster.enemyType === 'boss' ? '👑' : '👹',
+    enemyLv: monster.level,
+    monsterPower: monsterPower,
+    playerCp: Math.floor(effectiveCp),
+    winChance: winChance,
+    onComplete: function(success) {
+      if (success) {
+        // 胜利：击杀数+1，轮次+1
+        G.crimsonFortress.kills++;
+        G.crimsonFortress.round++;
+        // 每5关弹出buff选择
+        if (G.crimsonFortress.round % 5 === 0) {
+          G.crimsonFortress.pendingBuffs = rollCrimsonFortressBuffs();
+        }
+        saveGame();
+        if (typeof render === 'function') render();
+      } else {
+        // 失败：结算奖励
+        var result = endCrimsonFortress();
+        if (result && typeof showToast === 'function') {
+          showToast('💀 战斗失败！击杀 ' + result.kills + ' 怪，经验 +' + result.exp + '，金币 +' + result.gold, 'info');
+        }
+        if (typeof render === 'function') render();
+      }
+    },
+  });
+}
+
+// ==================== 挖密藏系统（v2.2.0 需求9）====================
+// 九宫格挖宝玩法：3x3网格，初始4次挖掘机会，可使用道具增加机会/透视/开锁
+
+var DIG_DAILY_LIMIT = 10;
+var DIG_INITIAL_DIGS = 4;
+
+// 格子类型概率分布
+var DIG_CELL_TYPES = [
+  { type: 'empty',        weight: 25, icon: '⬜', name: '空地',   color: '#6b7280' },
+  { type: 'gold',         weight: 20, icon: '🪙', name: '金币',   color: '#fbbf24' },
+  { type: 'gem',          weight: 12, icon: '💎', name: '宝石',   color: '#a855f7' },
+  { type: 'item',         weight: 15, icon: '📦', name: '道具',   color: '#3b82f6' },
+  { type: 'trap',         weight: 10, icon: '💥', name: '陷阱',   color: '#ef4444' },
+  { type: 'silver_chest', weight: 10, icon: '🥈', name: '银宝箱', color: '#9ca3af' },
+  { type: 'locked_chest', weight: 5,  icon: '🔒', name: '锁宝箱', color: '#f59e0b' },
+  { type: 'golden',       weight: 3,  icon: '🌟', name: '黄金宝藏',color: '#fde047' },
+];
+
+// 生成一个3x3网格
+function generateDigGrid() {
+  var grid = [];
+  var totalWeight = DIG_CELL_TYPES.reduce(function(s, t) { return s + t.weight; }, 0);
+  for (var i = 0; i < 9; i++) {
+    var roll = Math.random() * totalWeight;
+    var acc = 0;
+    var cellType = 'empty';
+    for (var j = 0; j < DIG_CELL_TYPES.length; j++) {
+      acc += DIG_CELL_TYPES[j].weight;
+      if (roll < acc) { cellType = DIG_CELL_TYPES[j].type; break; }
+    }
+    grid.push({
+      type: cellType,
+      revealed: false,     // 是否已挖掘
+      peeked: false,       // 是否已透视
+      reward: null,        // 挖掘后填入奖励信息
+    });
+  }
+  // 确保至少有1个非空格子（避免全空）
+  var hasReward = grid.some(function(c) { return c.type !== 'empty' && c.type !== 'trap'; });
+  if (!hasReward) {
+    grid[randomInt(0, 8)].type = 'gold';
+  }
+  return grid;
+}
+
+// 开始挖密藏会话
+function startDigSession() {
+  // 功能等级检查
+  if (typeof isFeatureUnlocked === 'function' && !isFeatureUnlocked('dig')) {
+    showToast('🔒 需要 ' + getFeatureUnlockLevel('dig') + ' 级才能解锁挖密藏功能', 'error');
+    return;
+  }
+  var today = new Date().toDateString();
+  if (!G.digDailyUsed) G.digDailyUsed = {};
+  var used = G.digDailyUsed[today] || 0;
+  if (used >= DIG_DAILY_LIMIT) {
+    showToast('今日挖密藏次数已用完（' + DIG_DAILY_LIMIT + '次/天）', 'error');
+    return;
+  }
+  // 消耗密藏图
+  var mapItem = G.inventory.find(function(i) { return i.id === 'dig_map'; });
+  if (!mapItem || mapItem.count <= 0) {
+    showToast('需要密藏图才能挖宝！', 'error');
+    return;
+  }
+  mapItem.count--;
+  if (mapItem.count <= 0) {
+    var idx = G.inventory.indexOf(mapItem);
+    if (idx >= 0) G.inventory.splice(idx, 1);
+  }
+  // 记录每日次数
+  G.digDailyUsed[today] = used + 1;
+  // 创建会话
+  G.digSession = {
+    grid: generateDigGrid(),
+    digsLeft: DIG_INITIAL_DIGS,
+    maxDigs: DIG_INITIAL_DIGS,
+    lensUsed: [],
+    keyUsed: false,
+    totalFound: { gold: 0, gem: 0, item: 0, diamond: 0, egg: 0 },
+    startTime: Date.now(),
+  };
+  saveGame();
+  showToast('🗺️ 挖密藏开始！你有 ' + DIG_INITIAL_DIGS + ' 次挖掘机会', 'success');
+  // 自动切换到挖密藏页面
+  if (typeof currentScreen !== 'undefined' && currentScreen !== 'dig') {
+    currentScreen = 'dig';
+  }
+  if (typeof render === 'function') render();
+}
+
+// 挖掘一个格子
+function digCell(idx) {
+  if (!G.digSession) return;
+  if (idx < 0 || idx >= 9) return;
+  var cell = G.digSession.grid[idx];
+  if (cell.revealed) {
+    showToast('该格子已挖掘过', 'error');
+    return;
+  }
+  if (G.digSession.digsLeft <= 0) {
+    showToast('挖掘次数已用完！可使用探宝铲增加次数或结束挖宝', 'error');
+    return;
+  }
+  // 锁宝箱需要钥匙
+  if (cell.type === 'locked_chest' && !G.digSession.keyUsed) {
+    var keyItem = G.inventory.find(function(i) { return i.id === 'dig_key'; });
+    if (!keyItem || keyItem.count <= 0) {
+      showToast('🔒 发现锁宝箱！需要密藏钥匙才能开启', 'error');
+      // 不消耗挖掘次数，不揭示
+      return;
+    }
+    // 消耗钥匙
+    keyItem.count--;
+    if (keyItem.count <= 0) {
+      var kidx = G.inventory.indexOf(keyItem);
+      if (kidx >= 0) G.inventory.splice(kidx, 1);
+    }
+    G.digSession.keyUsed = true;
+  }
+  // 消耗挖掘次数
+  G.digSession.digsLeft--;
+  cell.revealed = true;
+  // 处理奖励
+  var reward = processDigReward(cell.type);
+  cell.reward = reward;
+  // 陷阱：额外消耗1次挖掘
+  if (cell.type === 'trap') {
+    G.digSession.digsLeft = Math.max(0, G.digSession.digsLeft - 1);
+    if (reward) reward.extraMsg = '陷阱！额外损失1次挖掘机会';
+  }
+  saveGame();
+  if (typeof render === 'function') render();
+}
+
+// 处理挖掘奖励
+function processDigReward(cellType) {
+  var pl = G.player.level || 1;
+  var reward = null;
+  if (cellType === 'empty') {
+    reward = { icon: '⬜', name: '空空如也', amount: 0, color: '#6b7280' };
+  } else if (cellType === 'gold') {
+    var gold = Math.floor(pl * randomInt(50, 200));
+    addGold(gold);
+    G.digSession.totalFound.gold += gold;
+    reward = { icon: '🪙', name: '金币', amount: gold, color: '#fbbf24' };
+  } else if (cellType === 'gem') {
+    var gemDef = GEM_TYPES[randomInt(0, GEM_TYPES.length - 1)];
+    var gemLv = Math.random() < 0.15 ? 2 : 1;
+    addGemToBag(gemDef.id, gemLv, 1);
+    G.digSession.totalFound.gem++;
+    reward = { icon: gemDef.icon, name: gemDef.name + '+' + gemLv, amount: 1, color: gemDef.color };
+  } else if (cellType === 'item') {
+    var itemPool = ['forge_stone_low', 'hatch_stone', 'socket_nail', 'yuanxiao_str', 'yuanxiao_con', 'yuanxiao_agi', 'yuanxiao_int'];
+    var itemId = itemPool[randomInt(0, itemPool.length - 1)];
+    var existing = G.inventory.find(function(i) { return i.id === itemId; });
+    if (existing) existing.count += 1;
+    else G.inventory.push({ id: itemId, count: 1 });
+    if (itemId === 'hatch_stone') G.hatchStones = (G.hatchStones || 0) + 1;
+    G.digSession.totalFound.item++;
+    var itemName = getItemName(itemId);
+    reward = { icon: '📦', name: itemName, amount: 1, color: '#3b82f6' };
+  } else if (cellType === 'trap') {
+    reward = { icon: '💥', name: '陷阱', amount: 0, color: '#ef4444' };
+  } else if (cellType === 'silver_chest') {
+    var dia = randomInt(1, 3);
+    var sGold = Math.floor(pl * randomInt(100, 300));
+    addDiamond(dia);
+    addGold(sGold);
+    G.digSession.totalFound.diamond += dia;
+    G.digSession.totalFound.gold += sGold;
+    reward = { icon: '🥈', name: '银宝箱：钻石×' + dia + ' + 金币×' + sGold, amount: dia, color: '#9ca3af' };
+  } else if (cellType === 'locked_chest') {
+    var lDia = randomInt(5, 10);
+    addDiamond(lDia);
+    G.digSession.totalFound.diamond += lDia;
+    // 锁宝箱额外掉落T3-T4蛋
+    var eggTier = randomInt(2, 3);
+    var egg = generateEgg(eggTier);
+    G.eggs.push(egg);
+    G.digSession.totalFound.egg++;
+    reward = { icon: '🔒', name: '锁宝箱：钻石×' + lDia + ' + T' + (eggTier + 1) + '宠物蛋', amount: lDia, color: '#f59e0b' };
+  } else if (cellType === 'golden') {
+    // 黄金宝藏：彩蛋级奖励
+    var gDia = randomInt(10, 20);
+    addDiamond(gDia);
+    G.digSession.totalFound.diamond += gDia;
+    var gEggTier = randomInt(3, 4);
+    var gEgg = generateEgg(gEggTier);
+    G.eggs.push(gEgg);
+    G.digSession.totalFound.egg++;
+    // 额外掉落月华露
+    var moonItem = G.inventory.find(function(i) { return i.id === 'moon_dew'; });
+    if (moonItem) moonItem.count += 2;
+    else G.inventory.push({ id: 'moon_dew', count: 2 });
+    G.digSession.totalFound.item += 2;
+    reward = { icon: '🌟', name: '黄金宝藏！钻石×' + gDia + ' + T' + (gEggTier + 1) + '蛋 + 月华露×2', amount: gDia, color: '#fde047' };
+  }
+  return reward;
+}
+
+// 使用透视镜
+function useDigLens(idx) {
+  if (!G.digSession) return;
+  if (idx < 0 || idx >= 9) return;
+  var cell = G.digSession.grid[idx];
+  if (cell.revealed) {
+    showToast('该格子已挖掘，无需透视', 'error');
+    return;
+  }
+  if (cell.peeked) {
+    showToast('该格子已透视过了', 'error');
+    return;
+  }
+  var lensItem = G.inventory.find(function(i) { return i.id === 'dig_lens'; });
+  if (!lensItem || lensItem.count <= 0) {
+    showToast('没有透视镜！', 'error');
+    return;
+  }
+  lensItem.count--;
+  if (lensItem.count <= 0) {
+    var idx2 = G.inventory.indexOf(lensItem);
+    if (idx2 >= 0) G.inventory.splice(idx2, 1);
+  }
+  cell.peeked = true;
+  G.digSession.lensUsed.push(idx);
+  saveGame();
+  var typeInfo = DIG_CELL_TYPES.find(function(t) { return t.type === cell.type; });
+  showToast('🔍 透视发现：' + (typeInfo ? typeInfo.icon + ' ' + typeInfo.name : '未知'), 'info');
+  if (typeof render === 'function') render();
+}
+
+// 使用探宝铲增加挖掘次数
+function useDigShovel() {
+  if (!G.digSession) return;
+  if (G.digSession.digsLeft >= 9) {
+    showToast('挖掘次数已达上限！', 'error');
+    return;
+  }
+  var shovelItem = G.inventory.find(function(i) { return i.id === 'dig_shovel'; });
+  if (!shovelItem || shovelItem.count <= 0) {
+    showToast('没有探宝铲！', 'error');
+    return;
+  }
+  shovelItem.count--;
+  if (shovelItem.count <= 0) {
+    var idx = G.inventory.indexOf(shovelItem);
+    if (idx >= 0) G.inventory.splice(idx, 1);
+  }
+  G.digSession.digsLeft++;
+  G.digSession.maxDigs = Math.max(G.digSession.maxDigs, G.digSession.digsLeft);
+  saveGame();
+  showToast('⛏️ 探宝铲使用成功！挖掘次数 +1（剩余 ' + G.digSession.digsLeft + ' 次）', 'success');
+  if (typeof render === 'function') render();
+}
+
+// 结束挖密藏会话
+function endDigSession() {
+  if (!G.digSession) return;
+  var s = G.digSession;
+  var summary = '挖宝结束！';
+  var parts = [];
+  if (s.totalFound.gold > 0) parts.push('金币 ' + s.totalFound.gold.toLocaleString());
+  if (s.totalFound.gem > 0) parts.push('宝石 ×' + s.totalFound.gem);
+  if (s.totalFound.item > 0) parts.push('道具 ×' + s.totalFound.item);
+  if (s.totalFound.diamond > 0) parts.push('钻石 ×' + s.totalFound.diamond);
+  if (s.totalFound.egg > 0) parts.push('宠物蛋 ×' + s.totalFound.egg);
+  if (parts.length > 0) summary += '获得：' + parts.join('、');
+  else summary += '本次没有找到宝藏';
+  G.digSession = null;
+  saveGame();
+  showToast(summary, 'info');
+  if (typeof render === 'function') render();
+}

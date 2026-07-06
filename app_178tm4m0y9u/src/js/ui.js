@@ -58,11 +58,11 @@ const SHOP_ITEMS = [
   { id: 'exp_book_high', name: '高级经验书', desc: '使用后获得1000000人物经验', price: 20, icon: '📘', action: 'item', currency: 'diamond', quality: 'mid' },
   { id: 'gold_ticket', name: '金币副本门票', desc: '进入黄金矿洞的凭证', price: 800, icon: '🎫', action: 'item', quality: 'mid' },
   { id: 'egg_ticket', name: '蛋之森林门票', desc: '进入蛋之森林的凭证', price: 1500, icon: '🎫', action: 'item', quality: 'mid' },
-  { id: 'skill_ticket', name: '技能秘境门票', desc: '进入技能秘境的凭证', price: 1800, icon: '🎫', action: 'item', quality: 'mid' },
+  // v2.2.0 需求4：技能秘境/宠物秘境已移至活动页面，移除对应门票；补充缺失的血统副本门票
   { id: 'forge_ticket', name: '强化石矿脉门票', desc: '进入强化石矿脉的凭证', price: 2000, icon: '🎫', action: 'item', quality: 'mid' },
   { id: 'map_ticket', name: '藏宝遗迹门票', desc: '进入藏宝遗迹的凭证', price: 2500, icon: '🎫', action: 'item', quality: 'mid' },
   { id: 'gem_ticket', name: '宝石秘洞门票', desc: '进入宝石秘洞的凭证', price: 2200, icon: '🎫', action: 'item', quality: 'mid' },
-  { id: 'pet_ticket', name: '宠物秘境门票', desc: '进入宠物秘境的凭证', price: 2000, icon: '🎫', action: 'item', quality: 'mid' },
+  { id: 'blood_dungeon_ticket', name: '血统副本门票', desc: '进入血统副本的凭证（35级开启血统功能）', price: 2000, icon: '🩸', action: 'item', quality: 'mid' },
   { id: 'skill_random', name: '随机技能书', desc: '随机获得一本技能书', price: 2500, icon: '📖', action: 'skill_random', quality: 'mid' },
   { id: 'forge_stone_low', name: '低级强化石', desc: '用于装备 +1~+6 强化', price: 400, icon: '🔩', action: 'item', quality: 'low' },
   { id: 'forge_stone_mid', name: '中级强化石', desc: '用于装备 +7~+9 强化', price: 1800, icon: '⚙️', action: 'item', quality: 'mid' },
@@ -100,10 +100,17 @@ const SHOP_ITEMS = [
   // 需求7：打孔系统道具
   { id: 'socket_nail', name: '打孔钉', desc: '为装备打孔，成功率随孔数递减（80%/50%/20%）', price: 2500, icon: '🔨', action: 'item', quality: 'mid' },
   { id: 'repair_glue', name: '修补胶', desc: '重置装备孔洞为0（已镶嵌宝石返还背包）', price: 15, icon: '🩹', action: 'item', currency: 'diamond', quality: 'high' },
+  // 装备洗练道具
+  { id: 'refine_stone', name: '洗练石', desc: '重新随机装备词条，追求完美属性（45级开启）', price: 3000, icon: '🔮', action: 'item', quality: 'high' },
   // 需求3：宠物进阶丸
   { id: 'advance_pill_low', name: '低级进阶丸', desc: '增加10-30点宠物进阶值', price: 1500, icon: '💊', action: 'item', quality: 'low' },
   { id: 'advance_pill_mid', name: '中级进阶丸', desc: '增加50-100点宠物进阶值', price: 12, icon: '💉', action: 'item', currency: 'diamond', quality: 'mid' },
   { id: 'advance_pill_high', name: '高级进阶丸', desc: '增加200-500点宠物进阶值', price: 50, icon: '🌟', action: 'item', currency: 'diamond', quality: 'high' },
+  // v2.2.0 需求9：挖密藏系统道具
+  { id: 'dig_map', name: '密藏图', desc: '使用后开启挖密藏九宫格玩法', price: 1500, icon: '🗺️', action: 'item', quality: 'mid' },
+  { id: 'dig_shovel', name: '探宝铲', desc: '挖密藏中增加1次挖掘机会', price: 5, icon: '⛏️', action: 'item', currency: 'diamond', quality: 'mid' },
+  { id: 'dig_lens', name: '透视镜', desc: '挖密藏中透视1个格子内容（不消耗挖掘次数）', price: 8, icon: '🔍', action: 'item', currency: 'diamond', quality: 'mid' },
+  { id: 'dig_key', name: '密藏钥匙', desc: '挖密藏中开启锁住的宝箱格', price: 10, icon: '🗝️', action: 'item', currency: 'diamond', quality: 'high' },
 ];
 
 const EQUIPMENT_SLOTS = [
@@ -655,13 +662,15 @@ function getEquipStatBonus() {
 function getCharacterBonusForPet() {
   const eq = getEquipStatBonus();
   const lv = G.player.level;
-  // 需求7：全属性buff（flat值，all_stat buff的mult值作为固定加成）
-  const allStatBuff = getBuffMult('all_stat');
+// 需求7：全属性buff（flat值，all_stat buff的mult值作为固定加成）
+const allStatBuff = getFlatBuff('all_stat');
+// 人物修炼加成
+const cultBonus = (typeof getCultivationBonus === 'function') ? getCultivationBonus() : { 力量: 0, 体质: 0, 敏捷: 0, 智力: 0 };
   const baseStats = {
-    力量: 10 + lv * 3 + eq.力量 + allStatBuff,
-    体质: 10 + lv * 2 + eq.体质 + allStatBuff,
-    敏捷: 10 + lv * 2 + eq.敏捷 + allStatBuff,
-    智力: 10 + lv * 2 + eq.智力 + allStatBuff,
+    力量: 10 + lv * 3 + eq.力量 + allStatBuff + cultBonus.力量,
+    体质: 10 + lv * 2 + eq.体质 + allStatBuff + cultBonus.体质,
+    敏捷: 10 + lv * 2 + eq.敏捷 + allStatBuff + cultBonus.敏捷,
+    智力: 10 + lv * 2 + eq.智力 + allStatBuff + cultBonus.智力,
     气血: 50 + lv * 10 + eq.气血 + allStatBuff,
   };
   return {
@@ -692,9 +701,12 @@ function getCharacterBonusForPet() {
 }
 
 // 技能书商店价格（需求26：主动技能改为钻石定价；被动/光环同样钻石定价）
+// 需求4：确保商城覆盖所有可学习技能书（主动/被动/光环），融合限定技能除外
+const FUSION_EXCLUSIVE_SKILL_IDS = ['chaos_strike', 'doom_inferno', 'time_rift'];
 const SKILL_BOOK_SHOP = {
   // 需求8：主动技能按品质正序展示（普通→优秀→稀有→史诗→传说），同品质按名称排序
-  active: ACTIVE_SKILLS.slice().sort(function(a, b) {
+  // 排除融合限定技能（仅融合宠物专属，不可通过商店获取）
+  active: ACTIVE_SKILLS.filter(s => FUSION_EXCLUSIVE_SKILL_IDS.indexOf(s.id) < 0).sort(function(a, b) {
     var qa = SKILL_QUALITY_ORDER[a.quality] || 0;
     var qb = SKILL_QUALITY_ORDER[b.quality] || 0;
     if (qa !== qb) return qa - qb;
@@ -1026,6 +1038,28 @@ function showToast(msg, type) {
   setTimeout(() => { toast.remove(); }, 2500);
 }
 
+function showOfflineRewardsModal(rewards) {
+  if (!rewards) return;
+  var hours = Math.floor(rewards.minutes / 60);
+  var mins = rewards.minutes % 60;
+  var timeStr = hours > 0 ? hours + '小时' + mins + '分钟' : mins + '分钟';
+  var modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  modal.innerHTML = '<div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border:1px solid #f59e0b;border-radius:12px;padding:2rem;max-width:380px;width:90%;text-align:center;box-shadow:0 0 30px rgba(245,158,11,0.3);">' +
+    '<div style="font-size:2.5rem;margin-bottom:0.5rem;">🌙</div>' +
+    '<h2 style="color:#f59e0b;font-size:1.25rem;font-weight:bold;margin-bottom:0.5rem;">离线挂机收益</h2>' +
+    '<p style="color:#94a3b8;font-size:0.875rem;margin-bottom:1rem;">您离开了 ' + timeStr + '，宠物们继续为您战斗！</p>' +
+    '<div style="background:rgba(0,0,0,0.3);border-radius:8px;padding:1rem;margin-bottom:1rem;text-align:left;">' +
+    (rewards.exp > 0 ? '<p style="color:#60a5fa;margin:0.25rem 0;">⭐ 经验 +' + rewards.exp.toLocaleString() + '</p>' : '') +
+    (rewards.gold > 0 ? '<p style="color:#fbbf24;margin:0.25rem 0;">🪙 金币 +' + rewards.gold.toLocaleString() + '</p>' : '') +
+    (rewards.petExp > 0 ? '<p style="color:#34d399;margin:0.25rem 0;">🐉 宠物经验 +' + rewards.petExp.toLocaleString() + '</p>' : '') +
+    (rewards.eggs > 0 ? '<p style="color:#a78bfa;margin:0.25rem 0;">🥚 宠物蛋 ×' + rewards.eggs + '</p>' : '') +
+    '</div>' +
+    '<button onclick="this.parentElement.parentElement.remove();" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;padding:0.625rem 2rem;border-radius:0.5rem;cursor:pointer;font-size:0.95rem;font-weight:bold;width:100%;">领取奖励</button>' +
+    '</div>';
+  document.body.appendChild(modal);
+}
+
 function render() {
   try {
     const app = document.getElementById('app');
@@ -1047,6 +1081,7 @@ function render() {
       case 'arena': window._activitySheet = 'arena'; app.innerHTML = renderActivityScreen(); break;
       case 'arena_battle': app.innerHTML = renderArenaBattleScreen(); break;
       case 'treasure': app.innerHTML = renderTreasureScreen(); break;
+      case 'dig': app.innerHTML = renderDigScreen(); break;
       case 'activity': app.innerHTML = renderActivityScreen(); break;
       case 'forge': app.innerHTML = renderForgeScreen(); break;
       case 'pool': app.innerHTML = renderPoolScreen(); break;
@@ -1177,18 +1212,64 @@ function renderNav() {
     { id: 'achievement', icon: '🏆', label: '成就' },
     { id: 'activity', icon: '🎯', label: '活动' },
     { id: 'treasure', icon: '🗺️', label: '藏宝图' },
+    { id: 'dig', icon: '⛏️', label: '挖密藏' },
     { id: 'rebirth', icon: '🔄', label: '转生' },
   ];
-  return tabs.map(t => `
-    <button onclick="navigateTo('${t.id}')" class="tab-btn ${currentScreen === t.id ? 'active' : ''}">
-      ${t.icon} ${t.label}
-    </button>
-  `).join('');
+  return tabs.map(t => {
+    // 需求5：显示锁定状态
+    var isLocked = false;
+    var lockLevel = 0;
+    if (typeof SCREEN_FEATURE_MAP !== 'undefined' && SCREEN_FEATURE_MAP[t.id]) {
+      var featureId = SCREEN_FEATURE_MAP[t.id];
+      if (typeof isFeatureUnlocked === 'function' && !isFeatureUnlocked(featureId)) {
+        isLocked = true;
+        lockLevel = getFeatureUnlockLevel(featureId);
+      }
+    }
+    var lockIcon = isLocked ? ' 🔒<span class="text-xs text-red-400">' + lockLevel + '</span>' : '';
+    var lockStyle = isLocked ? ' style="opacity:0.5;"' : '';
+    return `
+    <button onclick="navigateTo('${t.id}')" class="tab-btn ${currentScreen === t.id ? 'active' : ''}"${lockStyle} title="${isLocked ? '需要' + lockLevel + '级解锁' : ''}">
+      ${t.icon} ${t.label}${lockIcon}
+    </button>`;
+  }).join('');
 }
 
 function renderBattleArena() {
   const arena = document.getElementById('battleArenaContent');
   if (!arena) return;
+  // v2.2.0 需求1：走路动画阶段渲染
+  if (walkPhase && walkPhase.active) {
+    var wMap = MAPS.find(function(m) { return m.id === walkPhase.mapId; });
+    var wTeam = walkPhase.team || [];
+    var petWalkHtml = wTeam.map(function(pet, i) {
+      var delay = i * 0.3;
+      return '<div class="walk-pet" style="animation-delay:' + delay + 's">' +
+        '<div class="text-2xl sm:text-3xl drop-shadow-lg animate-walk-bounce">' + getRaceEmoji(pet.race) + '</div>' +
+        '<span class="text-[10px] font-bold truncate max-w-[60px] text-center" style="color:' + RARITY_COLORS[RARITIES.indexOf(pet.rarity)] + '">' + getPetDisplayName(pet) + '</span>' +
+      '</div>';
+    }).join('');
+    arena.innerHTML = '<div class="battle-scene relative w-full h-full flex flex-col overflow-hidden" style="background:linear-gradient(180deg,#1a1a2e 0%,#16213e 40%,#0f3460 100%);min-height:440px;">' +
+      '<div class="absolute inset-0 opacity-10 animate-battle-bg" style="background-image:radial-gradient(circle,rgba(255,255,255,0.1) 1px,transparent 1px);background-size:20px 20px;"></div>' +
+      '<div class="flex-1 flex flex-col items-center justify-center relative z-10">' +
+        '<div class="text-center mb-4">' +
+          '<p class="text-sm text-secondary mb-1">🗺️ ' + (wMap ? wMap.name : '未知地图') + '</p>' +
+          '<p class="text-xs text-cyan-400 animate-pulse">探索中...</p>' +
+        '</div>' +
+        '<div class="walk-path relative w-full max-w-md h-32 flex items-end justify-center gap-3 px-4">' +
+          '<div class="walk-ground absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-purple-600/40 to-transparent"></div>' +
+          '<div class="walk-scenery absolute top-2 left-4 text-2xl opacity-40 animate-walk-tree">🌲</div>' +
+          '<div class="walk-scenery absolute top-4 right-8 text-2xl opacity-40 animate-walk-tree" style="animation-delay:0.5s">⛰️</div>' +
+          '<div class="walk-scenery absolute top-3 left-1/2 text-xl opacity-30 animate-walk-tree" style="animation-delay:1s">🌿</div>' +
+          petWalkHtml +
+        '</div>' +
+        '<div class="mt-4 text-center">' +
+          '<p class="text-xs text-yellow-400/60">🐾 正在寻找敌人...</p>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+    return;
+  }
   if (!liveBattle) {
     arena.innerHTML = `<div class="flex items-center justify-center h-full text-secondary text-sm">点击"开始挂机"进入战斗</div>`;
     return;
@@ -1210,8 +1291,8 @@ function renderBattleArena() {
     const typeLabel = enemyType === 'boss' ? 'BOSS' : enemyType === 'elite' ? '精英' : '';
     const typeColor = enemyType === 'boss' ? '#ef4444' : enemyType === 'elite' ? '#f59e0b' : '#94a3b8';
     const ms = lb.monsterStatusArray[i] || {};
-    const monsterStatusClass = ms.poisoned > 0 ? 'animate-status-poison' : ms.burning > 0 ? 'animate-status-burn' : ms.frozen > 0 ? 'animate-status-freeze' : ms.stunned > 0 ? 'animate-status-stun' : '';
-    const monsterStatusIcon = ms.poisoned > 0 ? '☠️' : ms.burning > 0 ? '🔥' : ms.frozen > 0 ? '❄️' : ms.stunned > 0 ? '💫' : ms.sleeping > 0 ? '😴' : ms.rooted > 0 ? '🌿' : '';
+    const monsterStatusClass = ms.poisoned > 0 ? 'animate-status-poison' : ms.burning > 0 ? 'animate-status-burn' : ms.frozen > 0 ? 'animate-status-freeze' : ms.stunned > 0 ? 'animate-status-stun' : ms.silenced > 0 ? 'animate-status-stun' : '';
+    const monsterStatusIcon = ms.poisoned > 0 ? '☠️' : ms.burning > 0 ? '🔥' : ms.frozen > 0 ? '❄️' : ms.stunned > 0 ? '💫' : ms.sleeping > 0 ? '😴' : ms.rooted > 0 ? '🌿' : ms.silenced > 0 ? '🔇' : (ms.tauntedBy !== null && ms.tauntedBy !== undefined) ? '🎯' : '';
     const icon = enemyType === 'boss' ? '👑' : enemyType === 'elite' ? '⭐' : '👹';
     // 任务16：怪物种族显示 + boss buff 状态显示
     const raceEmoji = getRaceEmoji(m.race);
@@ -1223,7 +1304,12 @@ function renderBattleArena() {
     if (mb.all > 0) buffBadges.push(`<span class="px-1 rounded text-[9px] bg-purple-900/70 text-purple-300" title="全属性+${Math.floor(mb.all*100)}%">全+${Math.floor(mb.all*100)}%</span>`);
     if (mb.reflectBuff > 0) buffBadges.push(`<span class="px-1 rounded text-[9px] bg-yellow-900/70 text-yellow-300" title="反伤${Math.floor(mb.reflectBuff*100)}%">反${Math.floor(mb.reflectBuff*100)}%</span>`);
     if (mb.shield > 0) buffBadges.push(`<span class="px-1 rounded text-[9px] bg-cyan-900/70 text-cyan-300" title="护盾${mb.shield}">盾${mb.shield}</span>`);
-    if (mb.counterBuff > 0) buffBadges.push(`<span class="px-1 rounded text-[9px] bg-orange-900/70 text-orange-300" title="反击${Math.floor(mb.counterBuff*100)}%">反</span>`);
+    if (mb.counterBuff > 0) buffBadges.push(`<span class="px-1 rounded text-[9px] bg-orange-900/70 text-orange-300" title="反击${Math.floor(mb.counterBuff*100)}%">反击</span>`);
+    if (mb.dodgeBuff > 0) buffBadges.push(`<span class="px-1 rounded text-[9px] bg-teal-900/70 text-teal-300" title="闪避+${Math.floor(mb.dodgeBuff*100)}%">闪+${Math.floor(mb.dodgeBuff*100)}%</span>`);
+    if (mb.defDebuff > 0) buffBadges.push(`<span class="px-1 rounded text-[9px] bg-gray-900/70 text-gray-300" title="防御-${Math.floor(mb.defDebuff*100)}%">防-${Math.floor(mb.defDebuff*100)}%</span>`);
+    if (mb.stolenAtk > 0) buffBadges.push(`<span class="px-1 rounded text-[9px] bg-pink-900/70 text-pink-300" title="偷取攻击力${mb.stolenAtk}">偷${mb.stolenAtk}</span>`);
+    // 怪物 Debuff：防御降低（armor_break 效果）
+    if (ms.defReduced > 0) buffBadges.push(`<span class="px-1 rounded text-[9px] bg-gray-800/70 text-gray-400" title="防御降低${Math.floor(ms.defReduced*100)}%（剩余${ms.defReduceTurns}回合）">破甲</span>`);
     const buffBadgesHtml = buffBadges.length > 0 ? `<div class="flex flex-wrap gap-0.5 justify-center mt-0.5">${buffBadges.join('')}</div>` : '';
     // 需求24：仅在首次渲染时播放生成/死亡动画，避免每次重绘都重新播放
     var spawnClass;
@@ -1261,7 +1347,8 @@ function renderBattleArena() {
       <div id="skillCastAnnouncement" class="absolute inset-0 flex items-center justify-center pointer-events-none z-20"></div>
 
       <div class="flex-1 flex flex-col relative z-10">
-        <div class="flex justify-end px-3 pt-3">
+        <div class="flex justify-between items-center px-3 pt-3">
+          <div id="battleAuraBar" class="flex flex-wrap gap-1"></div>
           <span class="text-xs text-secondary bg-black/40 px-2 py-0.5 rounded-full">回合 R${lb.round} · 敌人 ${aliveCount}/${monsters.length}</span>
         </div>
         <div class="flex-1 flex items-start justify-end px-3 sm:px-6 pt-2">
@@ -1284,8 +1371,8 @@ function renderBattleArena() {
               const pBuffs = lb.petBuffs[pet.id] || {};
               const hasShield = pBuffs.shield > 0;
               const pStatus = lb.petStatus[pet.id] || {};
-              const pStatusClass = pStatus.poisoned > 0 ? 'animate-status-poison' : pStatus.burning > 0 ? 'animate-status-burn' : pStatus.frozen > 0 ? 'animate-status-freeze' : pStatus.stunned > 0 ? 'animate-status-stun' : '';
-              const pStatusIcon = pStatus.poisoned > 0 ? '☠️' : pStatus.burning > 0 ? '🔥' : pStatus.frozen > 0 ? '❄️' : pStatus.stunned > 0 ? '💫' : pStatus.sleeping > 0 ? '😴' : pStatus.rooted > 0 ? '🌿' : '';
+              const pStatusClass = pStatus.poisoned > 0 ? 'animate-status-poison' : pStatus.burning > 0 ? 'animate-status-burn' : pStatus.frozen > 0 ? 'animate-status-freeze' : pStatus.stunned > 0 ? 'animate-status-stun' : pStatus.silenced > 0 ? 'animate-status-stun' : '';
+              const pStatusIcon = pStatus.poisoned > 0 ? '☠️' : pStatus.burning > 0 ? '🔥' : pStatus.frozen > 0 ? '❄️' : pStatus.stunned > 0 ? '💫' : pStatus.sleeping > 0 ? '😴' : pStatus.rooted > 0 ? '🌿' : pStatus.silenced > 0 ? '🔇' : '';
               const rarityColor = RARITY_COLORS[RARITIES.indexOf(pet.rarity)];
               const posColor = posInfo ? (posInfo.id === 'front' ? '#ef4444' : posInfo.id === 'mid' ? '#f59e0b' : '#3b82f6') : '#94a3b8';
               // 需求24：玩家宠物 buff/debuff 徽章（与怪物一致），鼠标悬停显示效果说明
@@ -1299,6 +1386,8 @@ function renderBattleArena() {
               if (pBuffs.counterBuff > 0) pBuffBadges.push(`<span class="px-1 rounded text-[9px] bg-orange-900/70 text-orange-300" title="反击${Math.floor(pBuffs.counterBuff*100)}%">反</span>`);
               if (pBuffs.defDebuff > 0) pBuffBadges.push(`<span class="px-1 rounded text-[9px] bg-gray-900/70 text-gray-300" title="防御-${Math.floor(pBuffs.defDebuff*100)}%">防-${Math.floor(pBuffs.defDebuff*100)}%</span>`);
               if (pBuffs.stolenAtk > 0) pBuffBadges.push(`<span class="px-1 rounded text-[9px] bg-pink-900/70 text-pink-300" title="偷取攻击力${pBuffs.stolenAtk}">偷${pBuffs.stolenAtk}</span>`);
+              if (pBuffs.dodgeBuff > 0) pBuffBadges.push(`<span class="px-1 rounded text-[9px] bg-teal-900/70 text-teal-300" title="闪避+${Math.floor(pBuffs.dodgeBuff*100)}%">闪+${Math.floor(pBuffs.dodgeBuff*100)}%</span>`);
+              if (pBuffs.hotTurns > 0 && pBuffs.hotPct > 0) pBuffBadges.push(`<span class="px-1 rounded text-[9px] bg-green-900/70 text-green-300" title="每回合恢复${Math.floor(pBuffs.hotPct*100)}%气血（剩余${pBuffs.hotTurns}回合）">回${Math.floor(pBuffs.hotPct*100)}%</span>`);
               const pBuffBadgesHtml = pBuffBadges.length > 0 ? `<div class="flex flex-wrap gap-0.5 justify-center mt-0.5">${pBuffBadges.join('')}</div>` : '';
               return `
               <div id="battle-pet-${pet.id}" class="flex flex-col items-center relative transition-all duration-300 ${isActive ? 'scale-105' : ''} ${isDead ? 'opacity-30 grayscale' : ''} ${hasShield ? 'animate-shield rounded-lg p-1' : ''} ${pStatusClass}">
@@ -1334,6 +1423,36 @@ function renderBattleArena() {
       </div>
     </div>
   `;
+  // 需求7：渲染光环效果到战斗界面
+  var auraBar = document.getElementById('battleAuraBar');
+  if (auraBar && lb.team && lb.team.length > 0) {
+    var auraEffects = {};
+    lb.team.forEach(function(pet) {
+      var skills = getAllSkills(pet);
+      skills.filter(function(s) { return s.type === 'aura'; }).forEach(function(s) {
+        if (!s.effect) return;
+        Object.keys(s.effect).forEach(function(k) {
+          if (!auraEffects[k] || s.effect[k] > auraEffects[k]) auraEffects[k] = s.effect[k];
+        });
+      });
+    });
+    var auraLabels = {
+      teamAtk: { icon: '⚔️', name: '攻击', fmt: function(v) { return '+' + Math.floor(v*100) + '%'; }, color: 'text-red-300 bg-red-900/70' },
+      teamDef: { icon: '🛡️', name: '防御', fmt: function(v) { return '+' + Math.floor(v*100) + '%'; }, color: 'text-blue-300 bg-blue-900/70' },
+      teamSpd: { icon: '💨', name: '速度', fmt: function(v) { return '+' + Math.floor(v*100) + '%'; }, color: 'text-green-300 bg-green-900/70' },
+      teamHp: { icon: '❤️', name: '气血', fmt: function(v) { return '+' + Math.floor(v*100) + '%'; }, color: 'text-pink-300 bg-pink-900/70' },
+      teamCrit: { icon: '🎯', name: '暴击', fmt: function(v) { return '+' + Math.floor(v*100) + '%'; }, color: 'text-yellow-300 bg-yellow-900/70' },
+      teamRegen: { icon: '💚', name: '回复', fmt: function(v) { return Math.floor(v*100) + '%/回合'; }, color: 'text-emerald-300 bg-emerald-900/70' },
+    };
+    var auraHtml = '';
+    Object.keys(auraEffects).forEach(function(k) {
+      var info = auraLabels[k];
+      if (info) {
+        auraHtml += '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold ' + info.color + '" title="光环：全队' + info.name + info.fmt(auraEffects[k]) + '">' + info.icon + info.fmt(auraEffects[k]) + '</span>';
+      }
+    });
+    auraBar.innerHTML = auraHtml;
+  }
 }
 
 // 需求24：技能释放时在战场中央显示技能名与施法者
@@ -1391,8 +1510,8 @@ function renderMainScreen() {
           <div class="flex-1 min-w-0">
             <h2 class="font-bold text-xl text-gold mb-1">🎉 新手礼包</h2>
             <p class="text-sm text-yellow-300/80 mb-1">欢迎来到暗影纪元！点击领取你的初始宠物开始冒险</p>
-            <p class="text-xs text-yellow-400/60">内含：<span class="text-white font-bold">3只初始宠物</span>（史莱姆+哥布林+精灵）+ <span class="text-white font-bold">1000金币</span> + <span class="text-white font-bold">2颗宠物蛋</span></p>
-            <p class="text-xs text-yellow-400/60 mt-1">宠物将自动出战，即刻开始战斗！</p>
+            <p class="text-xs text-yellow-400/60">内含：<span class="text-white font-bold">3只T1初始宠物</span>（防御+伤害+辅助各1只）+ <span class="text-white font-bold">10钻石</span> + <span class="text-white font-bold">5颗宠物蛋</span> + <span class="text-white font-bold">5个孵化石</span></p>
+            <p class="text-xs text-yellow-400/60 mt-1">附赠120分钟5项增益（全属性+200、双倍经验/金币、孵化10倍速、双倍蛋掉落），宠物自动出战！</p>
           </div>
           <div class="text-center">
             <div class="btn-gold text-lg px-6 py-3 font-bold">🎁 点击领取</div>
@@ -1401,6 +1520,40 @@ function renderMainScreen() {
         </div>
       </div>
       ` : ''}
+
+      ${(() => {
+        // 需求1：主线剧情任务显示
+        if (typeof getCurrentMainQuest !== 'function') return '';
+        var mq = getCurrentMainQuest();
+        if (!mq || !mq.questData) return '';
+        var q = mq.questData;
+        var pct = Math.min(100, Math.floor((mq.progress / q.target) * 100));
+        var done = mq.progress >= q.target;
+        var rewardParts = [];
+        if (q.reward.exp) rewardParts.push('⭐' + q.reward.exp);
+        if (q.reward.gold) rewardParts.push('🪙' + q.reward.gold);
+        if (q.reward.diamond) rewardParts.push('💎' + q.reward.diamond);
+        var typeLabel = q.type === 'tutorial' ? '📖 新手引导' : q.type === 'feature' ? '🔑 功能解锁' : '⚔️ 日常历练';
+        var typeColor = q.type === 'tutorial' ? '#22c55e' : q.type === 'feature' ? '#f59e0b' : '#3b82f6';
+        return `
+        <div class="bg-gradient-to-r from-purple-900/30 to-blue-900/30 border border-purple-600/50 rounded-xl p-4">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-xs px-2 py-0.5 rounded" style="background:${typeColor}22;color:${typeColor};border:1px solid ${typeColor}">${typeLabel}</span>
+              <h2 class="font-bold text-base text-gold">${q.name}</h2>
+            </div>
+            ${done ? '<button class="btn-gold btn-sm" onclick="claimMainQuestUI()">🎁 领取奖励</button>' : ''}
+          </div>
+          <p class="text-sm text-secondary mb-2">${q.desc}</p>
+          <div class="flex items-center gap-2">
+            <div class="progress-bar flex-1">
+              <div class="progress-fill ${done ? 'bg-gradient-to-r from-green-500 to-emerald-500' : 'bg-gradient-to-r from-purple-500 to-blue-500'}" style="width:${pct}%"></div>
+            </div>
+            <span class="text-xs ${done ? 'text-green-400' : 'text-secondary'}">${Math.min(mq.progress, q.target)}/${q.target}</span>
+          </div>
+          <p class="text-xs text-yellow-400/70 mt-1">奖励：${rewardParts.join(' ')}</p>
+        </div>`;
+      })()}
 
       <div class="bg-card border border-game rounded-xl p-4">
         <div class="flex items-center justify-between mb-3">
@@ -1440,7 +1593,7 @@ function renderMainScreen() {
               return `<button class="speed-btn ${G.battleSpeed === s ? 'active' : ''}" onclick="setBattleSpeed(${s})">${s}x</button>`;
             }).join('')}
           </div>
-          <span class="text-xs text-secondary">${autoBattleInterval ? '挂机中...' : '已停止'}</span>
+          <span class="text-xs text-secondary">${autoBattleInterval ? (walkPhase ? '🐾 探索中...' : '挂机中...') : '已停止'}</span>
           <button class="text-xs px-2 py-1 rounded border border-game ${G.autoOpenChests ? 'text-green-400' : 'text-secondary'}" onclick="toggleAutoChests()">
             ${G.autoOpenChests ? '📦 自动开箱' : '🎒 手动开箱'}
           </button>
@@ -1593,7 +1746,7 @@ function renderPetScreen() {
           <div class="pet-card rarity-${pet.rarity} ${isInTeam ? 'border-green-500 border-2' : ''} cursor-pointer" onclick="${selSlot >= 0 ? `assignPetToSlot('${pet.id}')` : `showPetDetail('${pet.id}')`}">
             <div class="flex items-center justify-between mb-2">
               <span class="text-xs font-bold" style="color:${RARITY_COLORS[RARITIES.indexOf(pet.rarity)]}">${RARITY_NAMES[RARITIES.indexOf(pet.rarity)]}</span>
-              ${isInTeam ? '<span class="text-xs text-green-400 font-bold">✓ 已出战</span>' : ''}
+              <div class="flex gap-1">${pet.advanceable ? '<span class="text-xs font-bold px-1.5 py-0.5 rounded bg-yellow-900 text-yellow-300 border border-yellow-500" title="可进阶宠物">进</span>' : ''}${isInTeam ? '<span class="text-xs text-green-400 font-bold">✓ 已出战</span>' : ''}</div>
             </div>
             <p class="font-bold">${getPetDisplayName(pet)}</p>
             <p class="text-xs text-secondary">${pet.race} · Lv.${pet.level} · 成长 ${pet.growth.toFixed(2)}</p>
@@ -1702,28 +1855,37 @@ function renderPetDetailModal() {
           <p class="font-bold text-green-400">${stats.速度}</p>
         </div>
       </div>
-      <h3 class="font-bold text-sm mb-2 mt-3">📋 基础四维</h3>
+      <h3 class="font-bold text-sm mb-2 mt-3">📋 基础四维${stats.charBonus ? '<span class="text-xs text-yellow-400 ml-2">（+号为人物属性20%加成）</span>' : ''}</h3>
       <div class="grid grid-cols-4 gap-2 mb-4 text-xs">
         <div class="bg-panel rounded-lg p-2 text-center">
           <p class="text-secondary">体质</p>
-          <p class="font-bold">${stats.体质}</p>
+          <p class="font-bold">${stats.体质 - (stats.charBonus ? stats.charBonus.体质 : 0)}${stats.charBonus && stats.charBonus.体质 > 0 ? '<span class="text-green-400">+' + stats.charBonus.体质 + '</span>' : ''}</p>
         </div>
         <div class="bg-panel rounded-lg p-2 text-center">
           <p class="text-secondary">力量</p>
-          <p class="font-bold">${stats.力量}</p>
+          <p class="font-bold">${stats.力量 - (stats.charBonus ? stats.charBonus.力量 : 0)}${stats.charBonus && stats.charBonus.力量 > 0 ? '<span class="text-green-400">+' + stats.charBonus.力量 + '</span>' : ''}</p>
         </div>
         <div class="bg-panel rounded-lg p-2 text-center">
           <p class="text-secondary">敏捷</p>
-          <p class="font-bold">${stats.敏捷}</p>
+          <p class="font-bold">${stats.敏捷 - (stats.charBonus ? stats.charBonus.敏捷 : 0)}${stats.charBonus && stats.charBonus.敏捷 > 0 ? '<span class="text-green-400">+' + stats.charBonus.敏捷 + '</span>' : ''}</p>
         </div>
         <div class="bg-panel rounded-lg p-2 text-center">
           <p class="text-secondary">智慧</p>
-          <p class="font-bold">${stats.智慧}</p>
+          <p class="font-bold">${stats.智慧 - (stats.charBonus ? stats.charBonus.智力 : 0)}${stats.charBonus && stats.charBonus.智力 > 0 ? '<span class="text-green-400">+' + stats.charBonus.智力 + '</span>' : ''}</p>
         </div>
       </div>
       ${(() => {
         // 宠物装备栏显示
+        // v2.2.0 需求2：宠物装备功能等级锁定
         if (!pet.petEquipment) return '';
+        if (typeof isFeatureUnlocked === 'function' && !isFeatureUnlocked('pet_equip')) {
+          var peUnlockLv = getFeatureUnlockLevel('pet_equip');
+          return '<div class="mb-4"><h3 class="font-bold text-sm mb-2">🎒 宠物装备</h3>' +
+            '<div class="bg-panel rounded-lg p-4 text-center border border-game">' +
+            '<div class="text-3xl mb-2">🔒</div>' +
+            '<p class="text-xs text-secondary">宠物装备功能将在 <span class="text-gold font-bold">Lv.' + peUnlockLv + '</span> 解锁</p>' +
+            '</div></div>';
+        }
         var pe = pet.petEquipment;
         var slotsHtml = PET_EQUIP_SLOTS.map(function(slot) {
           var e = pe[slot.id];
@@ -1836,7 +1998,14 @@ function renderPetDetailModal() {
           </div>
           <p class="text-xs text-secondary">${bloodline.desc}</p>
           ${bloodline.fromBloodlineOrb && bloodline.sourcePetName ? '<p class="text-xs text-purple-400 mt-1">📦 来源：' + bloodline.sourcePetName + '</p>' : ''}
-          ${bloodline.fromBloodlineOrb ? '<button class="btn-danger text-xs mt-2" onclick="removePetBloodlineOrb(\'' + pet.id + '\')">取出血统珠</button>' : '<button class="btn-primary text-xs mt-2" onclick="showBloodOrbImplantModal(\'' + pet.id + '\')">💎 植入血统珠</button>'}
+          ${(() => {
+            // v2.2.0 需求2：血统植入功能等级锁定
+            if (typeof isFeatureUnlocked === 'function' && !isFeatureUnlocked('bloodline') && !bloodline.fromBloodlineOrb) {
+              var blUnlockLv = getFeatureUnlockLevel('bloodline');
+              return '<p class="text-xs text-red-400 mt-2">🔒 血统植入功能需 Lv.' + blUnlockLv + ' 解锁</p>';
+            }
+            return bloodline.fromBloodlineOrb ? '<button class="btn-danger text-xs mt-2" onclick="removePetBloodlineOrb(\'' + pet.id + '\')">取出血统珠</button>' : '<button class="btn-primary text-xs mt-2" onclick="showBloodOrbImplantModal(\'' + pet.id + '\')">💎 植入血统珠</button>';
+          })()}
         </div>
       </div>
       ` : ''}
@@ -1982,15 +2151,17 @@ function renderShopScreen() {
           <h2 class="font-bold text-lg">📦 道具与宠物蛋</h2>
         </div>
         ${(function() {
-          // 需求15：道具分类筛选
+          // v2.2.0 需求5：商城分类重新梳理——8大分类，覆盖全部道具
           if (!window._shopItemFilter) window._shopItemFilter = 'all';
           var filters = [
             { id: 'all', label: '全部', icon: '📋' },
-            { id: 'ticket', label: '门票', icon: '🎫' },
-            { id: 'forge_stone', label: '强化石', icon: '🔩' },
-            { id: 'protection', label: '保护', icon: '🛡️' },
-            { id: 'boost', label: '加速', icon: '⚡' },
-            { id: 'other', label: '其他', icon: '📦' },
+            { id: 'ticket', label: '副本门票', icon: '🎫' },
+            { id: 'forge', label: '强化锻造', icon: '🔩' },
+            { id: 'pet', label: '宠物培养', icon: '🐾' },
+            { id: 'exp', label: '经验增益', icon: '📕' },
+            { id: 'gem', label: '宝石', icon: '💎' },
+            { id: 'gold', label: '金币箱', icon: '📦' },
+            { id: 'other', label: '其他', icon: '🧰' },
           ];
           return '<div class="flex flex-wrap gap-1 mb-3">' + filters.map(function(f) {
             var active = (window._shopItemFilter || 'all') === f.id;
@@ -1999,16 +2170,25 @@ function renderShopScreen() {
         })()}
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           ${(function() {
-            // 需求15：按分类筛选
+            // v2.2.0 需求5：按新分类筛选道具
             var filter = window._shopItemFilter || 'all';
+            // 定义各分类的道具ID集合
+            var ticketIds = ['exp_ticket','gold_ticket','egg_ticket','forge_ticket','map_ticket','gem_ticket','blood_dungeon_ticket'];
+            var forgeIds = ['forge_stone_low','forge_stone_mid','forge_stone_high','protection_stone','socket_nail','repair_glue','refine_stone'];
+            var petIds = ['hatch_boost','hatch_stone','fusion_stone','moon_dew','rare_egg','yuanxiao_str','yuanxiao_con','yuanxiao_agi','yuanxiao_int','guiyuan_pill','guixu_pill','advance_pill_low','advance_pill_mid','advance_pill_high'];
+            var expIds = ['exp_book','exp_book_mid','exp_book_high','exp_book_bulk','exp_card_2x','exp_card_5x','exp_card_10x','gold_card_2x','gold_card_5x','gold_card_10x','lucky_charm'];
+            var goldIds = ['gold_chest_s','gold_chest_m','gold_chest_l'];
             var filteredItems = SHOP_ITEMS.filter(function(item) {
               if (filter === 'all') return true;
-              if (filter === 'ticket') return item.id.endsWith('_ticket');
-              if (filter === 'forge_stone') return item.id.indexOf('forge_stone') === 0;
-              if (filter === 'protection') return item.id === 'protection_stone';
-              if (filter === 'boost') return item.id === 'hatch_boost' || item.id === 'moon_dew';
+              if (filter === 'ticket') return ticketIds.indexOf(item.id) >= 0;
+              if (filter === 'forge') return forgeIds.indexOf(item.id) >= 0;
+              if (filter === 'pet') return petIds.indexOf(item.id) >= 0;
+              if (filter === 'exp') return expIds.indexOf(item.id) >= 0;
+              if (filter === 'gem') return item.action === 'gem' || item.id.indexOf('gem_') === 0;
+              if (filter === 'gold') return goldIds.indexOf(item.id) >= 0;
               if (filter === 'other') {
-                return !item.id.endsWith('_ticket') && item.id.indexOf('forge_stone') !== 0 && item.id !== 'protection_stone' && item.id !== 'hatch_boost' && item.id !== 'moon_dew';
+                // 其他：不属于以上任何分类的道具
+                return ticketIds.indexOf(item.id) < 0 && forgeIds.indexOf(item.id) < 0 && petIds.indexOf(item.id) < 0 && expIds.indexOf(item.id) < 0 && goldIds.indexOf(item.id) < 0 && !(item.action === 'gem' || item.id.indexOf('gem_') === 0);
               }
               return true;
             });
@@ -3212,7 +3392,10 @@ function renderDexScreen() {
           var tierColor = tier === 5 ? '#ef4444' : tier === 4 ? '#fb923c' : tier === 3 ? '#a855f7' : tier === 2 ? '#3b82f6' : '#22c55e';
           // 融合限定宠物特殊标识
           var fusionBadge = dex.fusionOnly ? '<span class="text-xs font-black px-2 py-0.5 rounded ml-1" style="background:#ec489922;color:#ec4899;border:1px solid #ec4899">✨融合限定</span>' : '';
-          var cardBorder = dex.fusionOnly ? 'border-pink-500' : 'border-game';
+          // 可进阶宠物标识
+          var isAdvanceable = (typeof PET_ADVANCE_CHAINS !== 'undefined') && PET_ADVANCE_CHAINS.some(function(c) { return c.mid === name; });
+          var advanceBadge = isAdvanceable ? '<span class="text-xs font-bold px-1.5 py-0.5 rounded ml-1" style="background:#ca8a0422;color:#fbbf24;border:1px solid #fbbf24" title="可进阶宠物">进</span>' : '';
+          var cardBorder = dex.fusionOnly ? 'border-pink-500' : isAdvanceable ? 'border-yellow-600/50' : 'border-game';
           var maxSkills = getPetMaxSkills(name);
           // 天生技能（仅显示真实存在的）
           var innateHtml = '';
@@ -3253,7 +3436,7 @@ function renderDexScreen() {
           }).join('');
           return '<div class="bg-card border ' + cardBorder + ' rounded-xl p-3">' +
             '<div class="flex items-center justify-between mb-2">' +
-            '<div><p class="font-bold text-sm">' + name + fusionBadge + '</p>' +
+            '<div><p class="font-bold text-sm">' + name + fusionBadge + advanceBadge + '</p>' +
             '<p class="text-xs" style="color:' + raceColor + '">' + dex.race + ' · ' + specIcon + ' ' + specName + '</p></div>' +
             '<span class="text-xs font-black px-2 py-1 rounded" style="background:' + tierColor + '22;color:' + tierColor + ';border:1px solid ' + tierColor + '">' + tierLabel + '</span>' +
             '</div>' +
@@ -3481,6 +3664,8 @@ function renderCharacterScreen() {
     { id: 'equipment', label: '装备', icon: '⚔️' },
     { id: 'forge', label: '锻造强化', icon: '🔨' },
     { id: 'socket', label: '打孔镶嵌', icon: '🔩' },
+    { id: 'refine', label: '装备洗练', icon: '🔮' },
+    { id: 'cultivation', label: '人物修炼', icon: '🌀' },
   ];
   var tabsHtml = sheetTabs.map(function(t) {
     var active = sheet === t.id;
@@ -3641,8 +3826,8 @@ function renderCharacterScreen() {
   var attrHtml = ['力量','体质','敏捷','智力','气血'].map(function(a) {
     var baseVal = a === '气血' ? 50 + lv * 10 : 10 + lv * (a === '力量' ? 3 : 2);
     var eqVal = bonus[a] || 0;
-    // 需求7：全属性buff加成显示
-    var buffVal = getBuffMult('all_stat');
+// 需求7：全属性buff加成显示
+var buffVal = getFlatBuff('all_stat');
     var total = baseVal + eqVal + buffVal;
     var bonusStr = (eqVal + buffVal) > 0 ? '<p class="text-xs text-green-400">+' + (eqVal + buffVal) + '</p>' : '';
     return '<div class="bg-panel rounded-lg p-2 text-center"><p class="text-secondary">' + a + '</p><p class="font-bold">' + total + '</p>' + bonusStr + '</div>';
@@ -3817,12 +4002,23 @@ function renderCharacterScreen() {
     (sheet === 'equipment' ? equipmentContent : '') +
     (sheet === 'forge' ? forgeContent : '') +
     (sheet === 'socket' ? renderSocketSheet() : '') +
+    (sheet === 'refine' ? renderRefineSheet() : '') +
+    (sheet === 'cultivation' ? renderCultivationSheet() : '') +
     '</main>' +
     '</div>';
 }
 
 // ==================== 打孔镶嵌 sheet（需求7） ====================
 function renderSocketSheet() {
+  // v2.2.0 需求2：打孔镶嵌功能等级锁定
+  var gemUnlockLv = getFeatureUnlockLevel('gem');
+  if (!isFeatureUnlocked('gem')) {
+    return '<div class="bg-card border border-game rounded-xl p-6 text-center">' +
+      '<div class="text-4xl mb-3">🔒</div>' +
+      '<p class="text-secondary text-sm">打孔镶嵌功能将在 <span class="text-gold font-bold">Lv.' + gemUnlockLv + '</span> 解锁</p>' +
+      '<p class="text-xs text-secondary mt-2">宝石工匠正在打磨他的工具：「给我一点时间，我马上就能为你镶嵌宝石了！」</p>' +
+      '</div>';
+  }
   var nailItem = G.inventory.find(function(i) { return i.id === 'socket_nail'; });
   var glueItem = G.inventory.find(function(i) { return i.id === 'repair_glue'; });
   var nailCount = nailItem ? nailItem.count : 0;
@@ -3919,6 +4115,228 @@ function renderSocketSheet() {
     '<p class="text-xs text-secondary mb-3">为装备打孔以镶嵌宝石，提升属性。孔洞越多，可镶嵌的宝石越多。</p>' +
     (allEquips.length === 0 ? '<p class="text-center text-secondary py-8">暂无装备可打孔</p>' :
     '<div class="grid grid-cols-1 gap-2">' + equipsHtml + '</div>') +
+    '</div>' +
+    rulesHtml;
+}
+
+// ==================== 装备洗练 sheet（45级开启） ====================
+function renderRefineSheet() {
+  // 等级检查
+  var unlockLv = getFeatureUnlockLevel('equip_refine');
+  if (!isFeatureUnlocked('equip_refine')) {
+    return '<div class="bg-card border border-game rounded-xl p-6 text-center">' +
+      '<div class="text-4xl mb-3">🔒</div>' +
+      '<p class="text-secondary text-sm">装备洗练功能将在 <span class="text-gold font-bold">Lv.' + unlockLv + '</span> 解锁</p>' +
+      '<p class="text-xs text-secondary mt-2">洗练大师展示了神秘的洗练石：「重新洗练装备词条，追求完美属性，就在今日！」</p>' +
+      '</div>';
+  }
+
+  var stoneItem = G.inventory.find(function(i) { return i.id === 'refine_stone'; });
+  var stoneCount = stoneItem ? stoneItem.count : 0;
+
+  // 收集可洗练装备（有词条的装备）
+  var equippedList = [];
+  if (G.player && G.player.equipment) {
+    Object.keys(G.player.equipment).forEach(function(slotId) {
+      var it = G.player.equipment[slotId];
+      if (it && it.affixes && it.affixes.length > 0) {
+        equippedList.push({ item: it, location: 'equipped', slotId: slotId });
+      }
+    });
+  }
+  var bagList = G.equipmentBag.filter(function(it) {
+    return it && it.affixes && it.affixes.length > 0;
+  }).map(function(it, idx) {
+    return { item: it, location: 'bag', idx: idx };
+  });
+  var allEquips = equippedList.concat(bagList);
+
+  function getAffixHtml(item) {
+    return (item.affixes || []).map(function(a) {
+      var cls = a.special ? 'text-orange-400' : 'text-green-400';
+      var valStr = typeof a.format === 'function' ? a.format(a.value) : ('+' + a.value);
+      return '<span class="' + cls + ' text-xs px-1.5 py-0.5 rounded bg-panel">' + valStr + '</span>';
+    }).join(' ');
+  }
+
+  var equipsHtml = allEquips.map(function(entry) {
+    var item = entry.item;
+    var rarityIdx = EQUIP_RARITIES.indexOf(item.rarity);
+    var slotInfo = EQUIPMENT_SLOTS.find(function(s) { return s.id === item.slot; });
+    var isEquipped = entry.location === 'equipped';
+    var affixCount = (item.affixes || []).length;
+    var goldCost = getRefineGoldCost(item);
+    var canRefine = stoneCount > 0 && G.player.gold >= goldCost;
+    var baseStatStr = getEquipBaseStatText(item);
+    var forgeLv = (G.player.forgeLevels && G.player.forgeLevels[item.slot]) || 0;
+
+    return '<div class="bg-panel border border-game rounded-lg p-3">' +
+      '<div class="flex items-center justify-between">' +
+      '<div class="flex-1">' +
+      '<div class="flex items-center gap-1 mb-1">' +
+      '<span class="text-sm">' + (slotInfo ? slotInfo.icon : '📦') + '</span>' +
+      '<span class="text-xs font-bold" style="color:' + EQUIP_RARITY_COLORS[rarityIdx] + '">' + item.name + '</span>' +
+      '<span class="text-xs text-secondary">Lv.' + item.level + (isEquipped ? ' · 已装备' : '') + (forgeLv > 0 ? ' · +' + forgeLv : '') + '</span>' +
+      '</div>' +
+      '<div class="text-xs text-secondary mb-1">' + baseStatStr + '</div>' +
+      '<div class="flex flex-wrap gap-1 mb-1">' + getAffixHtml(item) + '</div>' +
+      '<div class="text-xs text-secondary">词条数：' + affixCount + ' · 洗练消耗：' +
+      '<span class="text-purple-400">🔮×1</span> + <span class="text-yellow-400">' + goldCost.toLocaleString() + '金币</span></div>' +
+      '</div>' +
+      '<div class="flex flex-col gap-1">' +
+      (canRefine ?
+        '<button class="btn-primary btn-sm text-xs" onclick="refineEquipment(\'' + item.id + '\')">🔮 洗练</button>' :
+        '<button class="btn-sm text-xs opacity-40" disabled>' + (stoneCount <= 0 ? '缺洗练石' : '金币不足') + '</button>') +
+      '</div>' +
+      '</div>' +
+      '</div>';
+  }).join('');
+
+  var rulesHtml = '<div class="bg-card border border-game rounded-xl p-4">' +
+    '<h2 class="font-bold text-lg mb-3">🔮 洗练规则</h2>' +
+    '<div class="text-xs text-secondary space-y-1">' +
+    '<p>· 洗练会<span class="text-purple-400">重新随机</span>装备的<span class="text-green-400">所有词条</span>类型与数值</p>' +
+    '<p>· 每次洗练消耗 <span class="text-purple-400">1个洗练石</span> + <span class="text-yellow-400">装备等级×200 金币</span></p>' +
+    '<p>· 词条池包含19种词条：力量/体质/敏捷/智力/气血/攻击/防御（数值&百分比）、暴击率、闪避率、宠物伤害/防御/气血</p>' +
+    '<p>· <span class="text-orange-400">橙色装备</span>洗练后保证保留1个宠物专属词条（宠物伤害/防御/气血）</p>' +
+    '<p>· 词条数值范围与装备生成时一致（数值类：level~level×3，百分比类：3%~12%）</p>' +
+    '<p>· 洗练后词条立即生效，无法撤销，不满意可再次洗练</p>' +
+    '<p>· 仅<span class="text-cyan-400">蓝色及以上</span>品质装备（有词条）可洗练</p>' +
+    '</div>' +
+    '</div>';
+
+  return '<div class="bg-card border border-game rounded-xl p-4">' +
+    '<div class="flex items-center justify-between mb-3">' +
+    '<h2 class="font-bold text-lg">🔮 装备洗练</h2>' +
+    '<div class="flex gap-3 text-xs">' +
+    '<span>🔮 洗练石 ×' + stoneCount + '</span>' +
+    '<span class="text-yellow-400">🪙 ' + G.player.gold.toLocaleString() + '</span>' +
+    '</div>' +
+    '</div>' +
+    '<p class="text-xs text-secondary mb-3">重新随机装备词条，追求完美属性搭配。高品质装备词条更多，洗练出极品属性的概率也更高。</p>' +
+    (allEquips.length === 0 ? '<p class="text-center text-secondary py-8">暂无可洗练的装备<br/><span class="text-xs">需要蓝色及以上品质装备（含词条）</span></p>' :
+    '<div class="grid grid-cols-1 gap-2">' + equipsHtml + '</div>') +
+    '</div>' +
+    rulesHtml;
+}
+
+// ==================== 人物修炼 sheet（20级开启） ====================
+function renderCultivationSheet() {
+  var unlockLv = getFeatureUnlockLevel('cultivation');
+  if (!isFeatureUnlocked('cultivation')) {
+    return '<div class="bg-card border border-game rounded-xl p-6 text-center">' +
+      '<div class="text-4xl mb-3">🔒</div>' +
+      '<p class="text-secondary text-sm">人物修炼功能将在 <span class="text-gold font-bold">Lv.' + unlockLv + '</span> 解锁</p>' +
+      '<p class="text-xs text-secondary mt-2">修炼大师端坐在蒲团上：「内外兼修，方能突破极限。修炼你的四维属性，让宠物也更加强大！」</p>' +
+      '</div>';
+  }
+
+  if (!G.player.cultivation) G.player.cultivation = { 力量: 0, 体质: 0, 敏捷: 0, 智力: 0 };
+  var cult = G.player.cultivation;
+  var cultBonus = getCultivationBonus();
+
+  var attrIcons = { 力量: '⚔️', 体质: '❤️', 敏捷: '💨', 智力: '🔮' };
+  var attrColors = { 力量: '#ef4444', 体质: '#22c55e', 敏捷: '#eab308', 智力: '#a855f7' };
+  var attrDescs = {
+    力量: '影响攻击力，20%继承给宠物',
+    体质: '影响气血与防御，20%继承给宠物',
+    敏捷: '影响速度与闪避，20%继承给宠物',
+    智力: '影响法术与魔法值，20%继承给宠物',
+  };
+
+  var cardsHtml = CULTIVATION_ATTRS.map(function(attr) {
+    var currentLv = cult[attr] || 0;
+    var isMax = currentLv >= CULTIVATION_MAX_LEVEL;
+    var goldCost = getCultivationGoldCost(currentLv);
+    var canCultivate = !isMax && G.player.gold >= goldCost;
+    var bonus = cultBonus[attr];
+    var pct = Math.floor((currentLv / CULTIVATION_MAX_LEVEL) * 100);
+    var barColor = attrColors[attr];
+
+    // 进度条
+    var barHtml = '<div class="w-full bg-panel rounded-full h-2 mt-2 overflow-hidden">' +
+      '<div class="h-full rounded-full transition-all" style="width:' + pct + '%;background:' + barColor + '"></div>' +
+      '</div>';
+
+    // 修炼阶段
+    var stage = '初学';
+    if (currentLv >= 40) stage = '宗师';
+    else if (currentLv >= 30) stage = '大师';
+    else if (currentLv >= 20) stage = '精通';
+    else if (currentLv >= 10) stage = '熟练';
+
+    return '<div class="bg-panel border border-game rounded-lg p-3">' +
+      '<div class="flex items-center justify-between mb-2">' +
+      '<div class="flex items-center gap-2">' +
+      '<span class="text-lg">' + attrIcons[attr] + '</span>' +
+      '<div>' +
+      '<span class="text-sm font-bold" style="color:' + barColor + '">' + attr + '修炼</span>' +
+      '<span class="text-xs text-secondary ml-1">· ' + stage + '</span>' +
+      '</div>' +
+      '</div>' +
+      '<div class="text-right">' +
+      '<span class="text-sm font-bold text-gold">Lv.' + currentLv + '/' + CULTIVATION_MAX_LEVEL + '</span>' +
+      '<span class="text-xs text-green-400 ml-1">(+' + bonus + ')</span>' +
+      '</div>' +
+      '</div>' +
+      '<p class="text-xs text-secondary">' + attrDescs[attr] + '</p>' +
+      barHtml +
+      '<div class="flex items-center justify-between mt-2">' +
+      '<div class="text-xs">' +
+      (isMax ? '<span class="text-gold">✅ 已满级</span>' :
+      '<span class="text-yellow-400">下一级消耗：' + goldCost.toLocaleString() + ' 金币</span>') +
+      '</div>' +
+      '<div class="flex gap-1">' +
+      (isMax ? '' :
+        (canCultivate ?
+          '<button class="btn-primary btn-sm text-xs" onclick="cultivateAttribute(\'' + attr + '\')">🌀 修炼</button>' :
+          '<button class="btn-sm text-xs opacity-40" disabled>金币不足</button>') +
+        '<button class="btn-gold btn-sm text-xs" onclick="cultivateMax(\'' + attr + '\')" ' + (G.player.gold < goldCost ? 'disabled style="opacity:0.4"' : '') + '>⚡ 一键</button>'
+      ) +
+      '</div>' +
+      '</div>' +
+      '</div>';
+  }).join('');
+
+  // 总加成汇总
+  var totalBonus = cultBonus.力量 + cultBonus.体质 + cultBonus.敏捷 + cultBonus.智力;
+  var totalLevels = (cult.力量 || 0) + (cult.体质 || 0) + (cult.敏捷 || 0) + (cult.智力 || 0);
+
+  var summaryHtml = '<div class="bg-card border border-game rounded-xl p-4 mb-3">' +
+    '<div class="flex items-center justify-between mb-2">' +
+    '<h2 class="font-bold text-lg">🌀 修炼总览</h2>' +
+    '<span class="text-sm text-yellow-400">🪙 ' + G.player.gold.toLocaleString() + '</span>' +
+    '</div>' +
+    '<div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">' +
+    '<div class="bg-panel rounded-lg p-2 text-center"><p class="text-xs text-secondary">总修炼等级</p><p class="text-lg font-bold text-gold">' + totalLevels + '/' + (CULTIVATION_MAX_LEVEL * 4) + '</p></div>' +
+    '<div class="bg-panel rounded-lg p-2 text-center"><p class="text-xs text-secondary">总属性加成</p><p class="text-lg font-bold text-green-400">+' + totalBonus + '</p></div>' +
+    '<div class="bg-panel rounded-lg p-2 text-center"><p class="text-xs text-secondary">宠物继承加成</p><p class="text-lg font-bold text-cyan-400">+' + Math.floor(totalBonus * 0.20) + '</p></div>' +
+    '<div class="bg-panel rounded-lg p-2 text-center"><p class="text-xs text-secondary">修炼阶段</p><p class="text-sm font-bold text-purple-400">' + (totalLevels >= 160 ? '一代宗师' : totalLevels >= 120 ? '出神入化' : totalLevels >= 80 ? '登堂入室' : totalLevels >= 40 ? '初窥门径' : '初学乍练') + '</p></div>' +
+    '</div>' +
+    '</div>';
+
+  var rulesHtml = '<div class="bg-card border border-game rounded-xl p-4">' +
+    '<h2 class="font-bold text-lg mb-3">🌀 修炼规则</h2>' +
+    '<div class="text-xs text-secondary space-y-1">' +
+    '<p>· 修炼可永久提升人物<span class="text-green-400">四维属性</span>（力量/体质/敏捷/智力），每级 <span class="text-green-400">+' + CULTIVATION_PER_LEVEL_BONUS + '</span></p>' +
+    '<p>· 修炼加成通过人物属性 <span class="text-cyan-400">20%继承</span> 给所有出战宠物</p>' +
+    '<p>· 每条修炼轨道最高 <span class="text-gold">' + CULTIVATION_MAX_LEVEL + ' 级</span>，总属性加成最高 +' + (CULTIVATION_MAX_LEVEL * CULTIVATION_PER_LEVEL_BONUS * 4) + '</p>' +
+    '<p>· 修炼消耗金币，随等级递增：</p>' +
+    '<p class="pl-4">· 1-10级：2,000~20,000 金币/级</p>' +
+    '<p class="pl-4">· 11-20级：55,000~105,000 金币/级</p>' +
+    '<p class="pl-4">· 21-30级：210,000~310,000 金币/级</p>' +
+    '<p class="pl-4">· 31-40级：620,000~820,000 金币/级</p>' +
+    '<p class="pl-4">· 41-50级：2,050,000~2,550,000 金币/级</p>' +
+    '<p>· 修炼阶段：初学(0) → 熟练(10) → 精通(20) → 大师(30) → 宗师(40)</p>' +
+    '<p>· <span class="text-yellow-400">⚡一键修炼</span>：连续修炼直到金币不足或满级（单次最多100级）</p>' +
+    '<p>· 修炼属性<span class="text-purple-400">永久生效</span>，转生后保留</p>' +
+    '</div>' +
+    '</div>';
+
+  return summaryHtml +
+    '<div class="bg-card border border-game rounded-xl p-4">' +
+    '<h2 class="font-bold text-lg mb-3">🌀 四维修炼</h2>' +
+    '<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">' + cardsHtml + '</div>' +
     '</div>' +
     rulesHtml;
 }
@@ -4168,6 +4586,7 @@ function renderFormationScreen() {
                 : '<p class="text-xs text-gold flex-1 text-center py-1">⭐ 已满级</p>'
               ) +
               (isActive ? '' : '<button class="btn-sm border border-game" style="color:' + f.color + '" onclick="setActiveFormation(\'' + f.id + '\')">激活</button>') +
+              (isActive ? '' : '<button class="btn-sm border border-red-700 text-red-400" onclick="if(confirm(\'分解《' + f.name + '》？将获得' + (1 + (learned.level||1)) + '个阵法碎片\'))decomposeFormation(\'' + f.id + '\')">🔄 分解</button>') +
             '</div>'
           :
             '<button class="btn-primary btn-sm w-full" ' + (bookCount < 1 ? 'disabled style="opacity:0.4"' : '') + ' onclick="learnFormation(\'' + f.id + '\')">📖 学习（需1本阵法书，持有 ' + bookCount + '）</button>'
@@ -4183,12 +4602,21 @@ function renderFormationScreen() {
       '<div class="flex gap-3 text-sm">' +
         '<span class="text-yellow-400">🪙 ' + G.player.gold.toLocaleString() + '</span>' +
         '<span class="text-blue-400">💎 ' + G.player.diamond.toLocaleString() + '</span>' +
+        '<span class="text-purple-400">🧩 ' + (G.formationFragments || 0) + '碎片</span>' +
       '</div>' +
     '</header>' +
     '<nav class="bg-panel border-b border-game px-2 py-2 flex flex-wrap gap-1 overflow-x-auto">' + renderNav() + '</nav>' +
     '<main class="flex-1 p-4 max-w-5xl mx-auto w-full space-y-4">' +
       activeInfoHtml +
       formationsHtml +
+      '<div class="bg-card border border-game rounded-xl p-4">' +
+        '<h2 class="font-bold text-lg mb-2">🧩 阵法碎片合成</h2>' +
+        '<p class="text-xs text-secondary mb-3">分解不需要的阵法可获得碎片，5个碎片可合成1本随机阵法书</p>' +
+        '<div class="flex items-center gap-3">' +
+          '<span class="text-purple-400 font-bold">当前碎片：' + (G.formationFragments || 0) + '</span>' +
+          '<button class="btn-primary btn-sm" ' + ((G.formationFragments || 0) < 5 ? 'disabled style="opacity:0.4"' : '') + ' onclick="synthesizeFormation()">🎴 合成随机阵法书（5碎片）</button>' +
+        '</div>' +
+      '</div>' +
     '</main>' +
   '</div>';
 }
@@ -4256,6 +4684,7 @@ function renderInventoryScreen() {
               ${sp ? `<p class="text-xs text-cyan-300 mt-1">出售：${sp.amount}${curIcon}/个</p>` : ''}
               ${item.id === 'hatch_boost' ? `<button class="btn-primary btn-sm mt-2 w-full" onclick="useHatchBoost()">使用</button>` : ''}
               ${item.id === 'moon_dew' ? `<button class="btn-gold btn-sm mt-2 w-full" onclick="useMoonDew()">🌙 使用</button>` : ''}
+              ${item.id === 'dig_map' ? `<button class="btn-gold btn-sm mt-2 w-full" onclick="startDigSession()">🗺️ 开始挖宝</button>` : ''}
               ${sp ? `<div class="flex gap-1 mt-2">
                 <button class="btn-primary btn-sm flex-1 text-xs" onclick="sellInventoryItem('${item.id}',1)">出售1</button>
                 <button class="btn-gold btn-sm flex-1 text-xs" onclick="sellInventoryItemAll('${item.id}')" ${item.count <= 1 ? 'disabled style="opacity:0.5"' : ''}>全部</button>
@@ -4331,6 +4760,14 @@ function renderPetEquipScreen() {
     contentHtml = '<div class="bg-card border border-game rounded-xl p-4">' +
       '<h2 class="font-bold text-lg mb-3">🎽 宠物装备背包 (' + bag.length + ')</h2>' +
       (bag.length === 0 ? '<p class="text-secondary text-center py-8">还没有宠物装备，去宠物秘境或打造获得！</p>' :
+        '<div class="bg-panel rounded-lg p-2 mb-3 flex flex-wrap gap-2 items-center">' +
+          '<span class="text-xs text-secondary">批量操作：</span>' +
+'<button class="btn-gold btn-sm text-xs" onclick="if(confirm(\'分解所有史诗及以下装备？\'))batchDecomposePetEquip(\'epic\')">♻️ 批量分解(史诗及以下)</button>' +
+'<button class="btn-gold btn-sm text-xs" onclick="if(confirm(\'分解所有稀有装备？\'))batchDecomposePetEquip(\'rare\')">♻️ 批量分解(稀有及以下)</button>' +
+'<button class="btn-gold btn-sm text-xs" onclick="if(confirm(\'分解所有优秀装备？\'))batchDecomposePetEquip(\'uncommon\')">♻️ 批量分解(优秀)</button>' +
+'<button class="btn-danger btn-sm text-xs" onclick="if(confirm(\'出售所有史诗及以下装备？\'))batchSellPetEquip(\'epic\')">💰 批量出售(史诗及以下)</button>' +
+'<button class="btn-danger btn-sm text-xs" onclick="if(confirm(\'出售所有稀有装备？\'))batchSellPetEquip(\'rare\')">💰 批量出售(稀有及以下)</button>' +
+        '</div>' +
         '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">' +
         slice.map(function(e) {
           var rarityIdx = PET_EQUIP_RARITIES.indexOf(e.rarity);
@@ -4784,6 +5221,20 @@ function renderMarketScreen() {
 function renderDailyScreen() {
   const bpLevel = G.player.battlePassLevel;
   const bpExp = G.player.battlePassExp % 200;
+  // 需求10：计算日常/周常可领取数量
+  var dailyClaimable = 0;
+  DAILY_TASKS.forEach(function(task) {
+    var p = G.dailyTasks[task.id] || 0;
+    if (p >= task.target && !G.dailyTasks[task.id + '_claimed']) dailyClaimable++;
+  });
+  var weeklyClaimable = 0;
+  if (typeof WEEKLY_TASKS !== 'undefined') {
+    if (!G.weeklyTasks) G.weeklyTasks = {};
+    WEEKLY_TASKS.forEach(function(task) {
+      var p = G.weeklyTasks[task.id] || 0;
+      if (p >= task.target && !G.weeklyTasks[task.id + '_claimed']) weeklyClaimable++;
+    });
+  }
   return `
   <div class="min-h-screen flex flex-col">
     <header class="bg-panel border-b border-game px-4 py-3">
@@ -4792,7 +5243,10 @@ function renderDailyScreen() {
     <nav class="bg-panel border-b border-game px-2 py-2 flex flex-wrap gap-1 overflow-x-auto">${renderNav()}</nav>
     <main class="flex-1 p-4 max-w-5xl mx-auto w-full space-y-4">
       <div class="bg-card border border-game rounded-xl p-4">
-        <h2 class="font-bold text-lg mb-3">📋 每日任务</h2>
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-bold text-lg">📋 每日任务</h2>
+          ${dailyClaimable > 0 ? `<button class="btn-gold btn-sm" onclick="claimAllDailyUI()">🎁 一键领取 (${dailyClaimable})</button>` : ''}
+        </div>
         ${DAILY_TASKS.map(task => {
           const progress = G.dailyTasks[task.id] || 0;
           const claimed = G.dailyTasks[task.id + '_claimed'];
@@ -4804,7 +5258,7 @@ function renderDailyScreen() {
               <p class="text-xs text-secondary">${task.desc}</p>
             </div>
             <div class="flex items-center gap-2">
-              <span class="text-xs ${done ? 'text-green-400' : 'text-secondary'}">${progress}/${task.target}</span>
+              <span class="text-xs ${done ? 'text-green-400' : 'text-secondary'}">${Math.min(progress, task.target)}/${task.target}</span>
               ${claimed ? '<span class="text-xs text-green-400">已领取</span>' :
                 done ? `<button class="btn-gold btn-sm" onclick="claimTask('${task.id}')">领取 💎${task.reward.diamond}</button>` :
                 '<span class="text-xs text-secondary">进行中</span>'}
@@ -4812,6 +5266,33 @@ function renderDailyScreen() {
           </div>`;
         }).join('')}
       </div>
+      ${typeof WEEKLY_TASKS !== 'undefined' ? `
+      <div class="bg-card border border-game rounded-xl p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-bold text-lg">🗓️ 周常任务</h2>
+          ${weeklyClaimable > 0 ? `<button class="btn-gold btn-sm" onclick="claimAllWeeklyUI()">🎁 一键领取 (${weeklyClaimable})</button>` : ''}
+        </div>
+        ${WEEKLY_TASKS.map(task => {
+          if (!G.weeklyTasks) G.weeklyTasks = {};
+          const progress = G.weeklyTasks[task.id] || 0;
+          const claimed = G.weeklyTasks[task.id + '_claimed'];
+          const done = progress >= task.target;
+          return `
+          <div class="flex items-center justify-between py-2 border-b border-game last:border-0">
+            <div>
+              <p class="text-sm font-bold">${task.name}</p>
+              <p class="text-xs text-secondary">${task.desc}</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs ${done ? 'text-green-400' : 'text-secondary'}">${Math.min(progress, task.target)}/${task.target}</span>
+              ${claimed ? '<span class="text-xs text-green-400">已领取</span>' :
+                done ? `<button class="btn-gold btn-sm" onclick="claimWeeklyTaskUI('${task.id}')">领取 💎${task.reward.diamond}</button>` :
+                '<span class="text-xs text-secondary">进行中</span>'}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+      ` : ''}
       <div class="bg-card border border-game rounded-xl p-4">
         <div class="flex items-center justify-between mb-3">
           <h2 class="font-bold text-lg">📜 战令 Lv.${bpLevel}</h2>
@@ -5221,6 +5702,15 @@ function selectRebirthPet(petId) {
 
 // 需求3：进阶 sheet 渲染
 function renderAdvanceSheet() {
+  // v2.2.0 需求2：宠物进阶功能等级锁定
+  var advanceUnlockLv = getFeatureUnlockLevel('pet_advance');
+  if (!isFeatureUnlocked('pet_advance')) {
+    return '<div class="bg-card border border-game rounded-xl p-6 text-center">' +
+      '<div class="text-4xl mb-3">🔒</div>' +
+      '<p class="text-secondary text-sm">宠物进阶功能将在 <span class="text-gold font-bold">Lv.' + advanceUnlockLv + '</span> 解锁</p>' +
+      '<p class="text-xs text-secondary mt-2">进阶导师微笑着说：「当你足够强大时，再来找我学习进阶之道吧。」</p>' +
+      '</div>';
+  }
   var selectedPetId = window._advancePetId || '';
   var selectedPet = selectedPetId ? G.pets.find(function(p) { return p.id === selectedPetId; }) : null;
   var advInfo = selectedPet ? getPetAdvanceInfo(selectedPet) : null;
@@ -5825,12 +6315,39 @@ function renderActivityScreen() {
     { id: 'formation', label: '押镖', icon: '🛡️' },       // 需求2
     { id: 'skillbook', label: '技能秘境', icon: '📚' },   // 需求6
     { id: 'petcave', label: '宠物秘境', icon: '🐾' },     // 需求12
-    { id: 'dispatch', label: '派遣奇遇', icon: '🎒' },     // 派遣系统
-  ];
+{ id: 'dispatch', label: '派遣奇遇', icon: '🎒' },     // 派遣系统
+{ id: 'fortress', label: '血色要塞', icon: '🏰' },     // 需求5：血色要塞
+];
   var tabsHtml = sheetTabs.map(function(t) {
     var active = sheet === t.id;
-    return '<button class="text-xs px-3 py-1 rounded border ' + (active ? 'bg-purple-900 text-purple-300 border-purple-500 font-bold' : 'border-game text-secondary') + '" onclick="window._activitySheet=\'' + t.id + '\';render()">' + t.icon + ' ' + t.label + '</button>';
+    // 需求5：活动页功能等级限制
+    var isLocked = false;
+    var lockLv = 0;
+    if (typeof ACTIVITY_TAB_FEATURE_MAP !== 'undefined' && ACTIVITY_TAB_FEATURE_MAP[t.id]) {
+      var featId = ACTIVITY_TAB_FEATURE_MAP[t.id];
+      if (typeof isFeatureUnlocked === 'function' && !isFeatureUnlocked(featId)) {
+        isLocked = true;
+        lockLv = getFeatureUnlockLevel(featId);
+      }
+    }
+    var lockSuffix = isLocked ? ' 🔒' + lockLv : '';
+    var lockCls = isLocked ? ' opacity-50 cursor-not-allowed' : '';
+    var onclickStr = isLocked ? '' : 'onclick="window._activitySheet=\'' + t.id + '\';render()"';
+    return '<button class="text-xs px-3 py-1 rounded border ' + (active ? 'bg-purple-900 text-purple-300 border-purple-500 font-bold' : 'border-game text-secondary') + lockCls + '"' + (onclickStr ? ' ' + onclickStr : '') + ' title="' + (isLocked ? '需要' + lockLv + '级解锁' : '') + '">' + t.icon + ' ' + t.label + lockSuffix + '</button>';
   }).join('');
+
+  // 需求5：如果当前选中的活动被锁定，自动切回第一个解锁的
+  var currentTabLocked = false;
+  if (typeof ACTIVITY_TAB_FEATURE_MAP !== 'undefined' && ACTIVITY_TAB_FEATURE_MAP[sheet]) {
+    var curFeatId = ACTIVITY_TAB_FEATURE_MAP[sheet];
+    if (typeof isFeatureUnlocked === 'function' && !isFeatureUnlocked(curFeatId)) {
+      currentTabLocked = true;
+    }
+  }
+  if (currentTabLocked) {
+    sheet = 'tower'; // 默认切换到爬塔（无等级限制）
+    window._activitySheet = 'tower';
+  }
 
   var contentHtml = '';
   if (sheet === 'treasure') {
@@ -5849,6 +6366,8 @@ function renderActivityScreen() {
     contentHtml = renderActivityPetCave();
   } else if (sheet === 'dispatch') {
     contentHtml = renderActivityDispatch();
+  } else if (sheet === 'fortress') {
+    contentHtml = renderActivityCrimsonFortress();
   }
 
   return `
@@ -5871,6 +6390,86 @@ function renderActivityScreen() {
 }
 
 // 需求7：活动战斗模态框 - 独立窗口展示活动战斗，不影响主线挂机
+// 需求5：血色要塞活动页面
+function renderActivityCrimsonFortress() {
+  var remaining = (typeof getCrimsonFortressRemaining === 'function') ? getCrimsonFortressRemaining() : 2;
+  var cf = G.crimsonFortress;
+  
+  // 如果活动正在进行中，显示战斗界面
+  if (cf && cf.active) {
+    var diff = (typeof CRIMSON_FORTRESS_DIFFICULTIES !== 'undefined') ? CRIMSON_FORTRESS_DIFFICULTIES.find(function(d) { return d.id === cf.difficulty; }) : null;
+    var diffName = diff ? diff.name : '未知';
+    // Buff选择界面（pendingBuffs 存在时显示3选1）
+    if (cf.pendingBuffs && cf.pendingBuffs.length > 0) {
+      var buffCards = cf.pendingBuffs.map(function(buff) {
+        var qualityColors = { common: '#9ca3af', uncommon: '#22c55e', rare: '#3b82f6', epic: '#a855f7' };
+        var qualityNames = { common: '普通', uncommon: '精良', rare: '稀有', epic: '史诗' };
+        var color = qualityColors[buff.quality] || '#9ca3af';
+        var qName = qualityNames[buff.quality] || '普通';
+        return '<div class="bg-panel rounded-xl p-3 border-2 cursor-pointer hover:bg-opacity-80 transition-all" style="border-color:' + color + '44" onclick="selectCrimsonFortressBuffUI(\'' + buff.id + '\')">' +
+          '<div class="flex items-center justify-between mb-1">' +
+            '<span class="font-bold text-sm" style="color:' + color + '">' + buff.name + '</span>' +
+            '<span class="text-xs px-1.5 py-0.5 rounded" style="background:' + color + '22;color:' + color + '">' + qName + '</span>' +
+          '</div>' +
+          '<p class="text-xs text-secondary">' + buff.desc + '</p>' +
+        '</div>';
+      }).join('');
+      return '<div class="bg-card border border-game rounded-xl p-4">' +
+        '<h2 class="font-bold text-lg text-yellow-400 mb-2">🏰 血色要塞 · 第' + (cf.round + 1) + '关</h2>' +
+        '<p class="text-xs text-secondary mb-3">⚔️ 选择一个增益强化你的队伍！（效果可累加）</p>' +
+        '<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">' + buffCards + '</div>' +
+      '</div>';
+    }
+    
+    // 已选buff列表
+    var buffsHtml = (cf.buffs && cf.buffs.length > 0) ? cf.buffs.map(function(b) {
+      return '<span class="text-xs px-2 py-0.5 rounded bg-purple-900/50 text-purple-300 border border-purple-600/30">' + b.name + '</span>';
+    }).join('') : '<span class="text-xs text-secondary">暂无增益</span>';
+    
+    return '<div class="bg-card border border-game rounded-xl p-4">' +
+      '<div class="flex items-center justify-between mb-3">' +
+        '<h2 class="font-bold text-lg text-red-400">🏰 血色要塞 · ' + diffName + '</h2>' +
+        '<button class="btn-sm border border-red-700 text-red-400" onclick="abandonCrimsonFortressUI()">🏳️ 放弃</button>' +
+      '</div>' +
+      '<div class="grid grid-cols-3 gap-2 mb-3 text-center">' +
+        '<div class="bg-panel rounded p-2"><p class="text-xs text-secondary">当前关卡</p><p class="text-lg font-bold text-gold">' + (cf.round + 1) + '</p></div>' +
+        '<div class="bg-panel rounded p-2"><p class="text-xs text-secondary">击杀数</p><p class="text-lg font-bold text-red-400">' + cf.kills + '</p></div>' +
+        '<div class="bg-panel rounded p-2"><p class="text-xs text-secondary">已选增益</p><p class="text-lg font-bold text-purple-400">' + (cf.buffs ? cf.buffs.length : 0) + '</p></div>' +
+      '</div>' +
+      '<div class="bg-panel rounded-lg p-2 mb-3"><p class="text-xs text-secondary mb-1">已选增益：</p><div class="flex flex-wrap gap-1">' + buffsHtml + '</div></div>' +
+      '<div class="text-center">' +
+        '<p class="text-xs text-secondary mb-2">💡 每5关可选择一次增益buff，怪物每5关强化5%</p>' +
+        '<button class="btn-primary" onclick="beginCrimsonFortressBattle()">⚔️ 挑战第' + (cf.round + 1) + '关</button>' +
+      '</div>' +
+    '</div>';
+  }
+  
+  // 活动未进行中，显示难度选择界面
+  var diffHtml = '';
+  if (typeof CRIMSON_FORTRESS_DIFFICULTIES !== 'undefined') {
+    diffHtml = CRIMSON_FORTRESS_DIFFICULTIES.map(function(d) {
+      return '<div class="bg-panel rounded-xl p-4 border border-game">' +
+        '<div class="flex items-center justify-between mb-2">' +
+          '<h3 class="font-bold text-base" style="color:' + (d.id === 'easy' ? '#22c55e' : d.id === 'normal' ? '#f59e0b' : '#ef4444') + '">' + d.name + '</h3>' +
+          '<button class="btn-primary btn-sm" ' + (remaining <= 0 ? 'disabled style="opacity:0.4"' : '') + ' onclick="startCrimsonFortressUI(\'' + d.id + '\')">挑战</button>' +
+        '</div>' +
+        '<p class="text-xs text-secondary">' + d.desc + '</p>' +
+        '<p class="text-xs text-yellow-400/70 mt-1">经验倍率：' + d.expMult + '倍</p>' +
+      '</div>';
+    }).join('');
+  }
+  
+  return '<div class="bg-card border border-game rounded-xl p-4">' +
+    '<div class="flex items-center justify-between mb-3">' +
+      '<h2 class="font-bold text-lg text-red-400">🏰 血色要塞</h2>' +
+      '<span class="text-xs text-secondary">今日剩余：' + remaining + ' 次</span>' +
+    '</div>' +
+    '<p class="text-sm text-secondary mb-3">血色要塞是一个无限轮次的Roguelike战斗活动。每5关可选择一次增益buff，怪物每5关整体强化5%。战斗失败时按击杀数结算奖励，经验为正常的3倍。</p>' +
+    '<div class="space-y-3">' + diffHtml + '</div>' +
+  '</div>' +
+  (typeof renderActivityHarvestLog === 'function' ? renderActivityHarvestLog('fortress', '血色要塞收获日志') : '');
+}
+
 function renderActivityBattleModal() {
   var ab = window._activityBattle;
   if (!ab) return '';
@@ -6139,7 +6738,7 @@ function renderActivityArena() {
 // 活动页 - 进阶试炼（需求3：替换血统试炼）
 function renderActivityAdvance() {
   var today = new Date().toDateString();
-  var doneToday = G.bloodlineTrialUsed && G.bloodlineTrialUsed[today];
+  var doneToday = G.advanceTrialUsed && G.advanceTrialUsed[today];
   var unlocked = G.player.level >= ADVANCE_TRIAL.minLevel;
   var cp = Math.floor(getPlayerCombatPower());
   // 找到当前战力所属档位
@@ -6802,7 +7401,14 @@ function generateTreasureMap(rarity) {
   }
   let special = null;
   if (rarity === 'orange') {
+    // 橙色藏宝图：100%获得特殊词缀（含三倍奖励）
     special = TREASURE_SPECIAL_AFFIXES[randomInt(0, TREASURE_SPECIAL_AFFIXES.length - 1)];
+  } else if (rarity === 'purple') {
+    // v2.2.0 需求10：紫色藏宝图30%概率获得特殊词缀（不含三倍奖励）
+    if (Math.random() < 0.30) {
+      var purpleSpecials = TREASURE_SPECIAL_AFFIXES.filter(function(a) { return a.id !== 'triple_reward'; });
+      special = purpleSpecials[randomInt(0, purpleSpecials.length - 1)];
+    }
   }
   // 需求5：随机分配地图类型（1-11），决定宠物蛋掉落池
   var mapType = randomInt(1, 11);
@@ -6942,6 +7548,189 @@ function renderTreasureScreen() {
       </div>
     </main>
   </div>`;
+}
+
+// ==================== 挖密藏系统（v2.2.0 需求9）====================
+function renderDigScreen() {
+  var today = new Date().toDateString();
+  var used = (G.digDailyUsed && G.digDailyUsed[today]) || 0;
+  var digMapItem = G.inventory.find(function(i) { return i.id === 'dig_map'; });
+  var digMapCount = digMapItem ? digMapItem.count : 0;
+  var digShovelItem = G.inventory.find(function(i) { return i.id === 'dig_shovel'; });
+  var digShovelCount = digShovelItem ? digShovelItem.count : 0;
+  var digLensItem = G.inventory.find(function(i) { return i.id === 'dig_lens'; });
+  var digLensCount = digLensItem ? digLensItem.count : 0;
+  var digKeyItem = G.inventory.find(function(i) { return i.id === 'dig_key'; });
+  var digKeyCount = digKeyItem ? digKeyItem.count : 0;
+
+  // 道具栏HTML（共用）
+  var toolsHtml = '<div class="grid grid-cols-4 gap-2 mb-4">' +
+    '<div class="bg-panel border border-game rounded-lg p-2 text-center">' +
+      '<div class="text-2xl">🗺️</div><p class="text-xs mt-1 text-yellow-400">密藏图</p><p class="text-gold text-sm font-bold">×' + digMapCount + '</p>' +
+    '</div>' +
+    '<div class="bg-panel border border-game rounded-lg p-2 text-center">' +
+      '<div class="text-2xl">⛏️</div><p class="text-xs mt-1 text-cyan-300">探宝铲</p><p class="text-gold text-sm font-bold">×' + digShovelCount + '</p>' +
+    '</div>' +
+    '<div class="bg-panel border border-game rounded-lg p-2 text-center">' +
+      '<div class="text-2xl">🔍</div><p class="text-xs mt-1 text-purple-300">透视镜</p><p class="text-gold text-sm font-bold">×' + digLensCount + '</p>' +
+    '</div>' +
+    '<div class="bg-panel border border-game rounded-lg p-2 text-center">' +
+      '<div class="text-2xl">🗝️</div><p class="text-xs mt-1 text-orange-300">密藏钥匙</p><p class="text-gold text-sm font-bold">×' + digKeyCount + '</p>' +
+    '</div>' +
+  '</div>';
+
+  // 格子类型图例
+  var legendHtml = '<div class="flex flex-wrap gap-2 justify-center mb-4">' +
+    DIG_CELL_TYPES.map(function(t) {
+      return '<span class="text-xs px-2 py-1 rounded bg-panel border border-game" style="color:' + t.color + '">' + t.icon + ' ' + t.name + '</span>';
+    }).join('') +
+  '</div>';
+
+  var content = '';
+
+  if (G.digSession) {
+    // ===== 挖掘进行中 =====
+    var s = G.digSession;
+    var selectedCell = window._digSelectedCell;
+
+    // 渲染九宫格
+    var gridHtml = '<div class="dig-grid">';
+    for (var i = 0; i < 9; i++) {
+      var cell = s.grid[i];
+      var cellClass = 'dig-cell ';
+      var cellContent = '';
+      if (cell.revealed) {
+        cellClass += 'dig-cell-revealed';
+        var typeInfo = DIG_CELL_TYPES.find(function(t) { return t.type === cell.type; });
+        var bgColor = typeInfo ? typeInfo.color : '#333';
+        cellContent = '<div class="dig-cell-icon">' + (cell.reward ? cell.reward.icon : (typeInfo ? typeInfo.icon : '⬜')) + '</div>';
+        if (cell.reward) {
+          cellContent += '<div class="dig-cell-label" style="color:' + (cell.reward.color || '#fff') + '">' + cell.reward.name + '</div>';
+        } else {
+          cellContent += '<div class="dig-cell-label" style="color:' + bgColor + '">' + (typeInfo ? typeInfo.name : '') + '</div>';
+        }
+        cellContent = '<div style="background:linear-gradient(135deg,' + bgColor + '22,' + bgColor + '11);width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;">' + cellContent + '</div>';
+      } else if (cell.peeked) {
+        cellClass += 'dig-cell-peeked';
+        if (selectedCell === i) cellClass += ' dig-cell-selected';
+        var peekTypeInfo = DIG_CELL_TYPES.find(function(t) { return t.type === cell.type; });
+        cellContent = '<div class="dig-cell-icon" style="opacity:0.5">' + (peekTypeInfo ? peekTypeInfo.icon : '❓') + '</div>';
+        cellContent += '<div class="text-[9px] text-purple-300 mt-1">已透视</div>';
+        cellContent = '<div onclick="selectDigCell(' + i + ')" style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;">' + cellContent + '</div>';
+      } else {
+        cellClass += 'dig-cell-hidden';
+        if (selectedCell === i) cellClass += ' dig-cell-selected';
+        cellContent = '<div class="dig-cell-icon">❓</div>';
+        cellContent = '<div onclick="selectDigCell(' + i + ')" style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;">' + cellContent + '</div>';
+      }
+      gridHtml += '<div class="' + cellClass + '" ' + (!cell.revealed ? 'onclick="digCell(' + i + ')"' : '') + '>' + cellContent + '</div>';
+    }
+    gridHtml += '</div>';
+
+    // 统计已获得
+    var foundParts = [];
+    if (s.totalFound.gold > 0) foundParts.push('<span class="text-yellow-400">🪙 ' + s.totalFound.gold.toLocaleString() + '</span>');
+    if (s.totalFound.gem > 0) foundParts.push('<span class="text-purple-400">💎 ×' + s.totalFound.gem + '</span>');
+    if (s.totalFound.item > 0) foundParts.push('<span class="text-blue-400">📦 ×' + s.totalFound.item + '</span>');
+    if (s.totalFound.diamond > 0) foundParts.push('<span class="text-cyan-400">🔷 ×' + s.totalFound.diamond + '</span>');
+    if (s.totalFound.egg > 0) foundParts.push('<span class="text-orange-400">🥚 ×' + s.totalFound.egg + '</span>');
+    var foundHtml = foundParts.length > 0 ? foundParts.join('　') : '<span class="text-secondary">暂无收获</span>';
+
+    // 工具操作区
+    var toolBarHtml = '<div class="bg-panel border border-game rounded-xl p-3 mb-3">' +
+      '<div class="flex items-center justify-between mb-2">' +
+        '<span class="text-sm font-bold text-yellow-400">⛏️ 剩余挖掘次数：' + s.digsLeft + '</span>' +
+        '<span class="text-xs text-secondary">已挖 ' + s.grid.filter(function(c) { return c.revealed; }).length + '/9 格</span>' +
+      '</div>' +
+      '<div class="grid grid-cols-3 gap-2">' +
+        '<button class="btn-sm ' + (digLensCount > 0 && selectedCell !== undefined ? 'btn-primary' : 'border border-game text-secondary') + '" ' +
+          'style="' + (digLensCount <= 0 || selectedCell === undefined ? 'opacity:0.5;cursor:not-allowed;' : '') + '" ' +
+          (digLensCount > 0 && selectedCell !== undefined ? 'onclick="useDigLens(' + selectedCell + ')"' : '') + '>' +
+          '🔍 透视 (×' + digLensCount + ')</button>' +
+        '<button class="btn-sm ' + (digShovelCount > 0 && s.digsLeft < 9 ? 'btn-primary' : 'border border-game text-secondary') + '" ' +
+          'style="' + (digShovelCount <= 0 || s.digsLeft >= 9 ? 'opacity:0.5;cursor:not-allowed;' : '') + '" ' +
+          (digShovelCount > 0 && s.digsLeft < 9 ? 'onclick="useDigShovel()"' : '') + '>' +
+          '⛏️ 探宝铲 (×' + digShovelCount + ')</button>' +
+        '<button class="btn-sm ' + (digKeyCount > 0 && !s.keyUsed ? 'btn-gold' : 'border border-game text-secondary') + '" ' +
+          'style="' + (digKeyCount <= 0 || s.keyUsed ? 'opacity:0.5;cursor:not-allowed;' : '') + '" ' +
+          (digKeyCount > 0 && !s.keyUsed ? 'onclick="showToast(\'🗝️ 钥匙会在挖到锁宝箱时自动使用\', \'info\')"' : '') + '>' +
+          '🗝️ 钥匙' + (s.keyUsed ? '(已用)' : ' (×' + digKeyCount + ')') + '</button>' +
+      '</div>' +
+      (selectedCell !== undefined ? '<p class="text-xs text-center text-yellow-400 mt-2">已选中第 ' + (selectedCell + 1) + ' 格，点击「透视」查看内容</p>' : '<p class="text-xs text-center text-secondary mt-2">点击未挖掘的格子可挖掘，先选中再点透视可预览</p>') +
+    '</div>';
+
+    content = `
+    <div class="bg-card border border-game rounded-xl p-4">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-bold text-lg text-yellow-400">⛏️ 挖密藏进行中</h2>
+        <button class="btn-danger btn-sm" onclick="endDigSession()">结束挖宝</button>
+      </div>
+      ${toolBarHtml}
+      ${gridHtml}
+      <div class="mt-4 text-center">
+        <p class="text-xs text-secondary mb-1">本期收获</p>
+        <p class="text-sm">${foundHtml}</p>
+      </div>
+      <div class="mt-3 text-center">
+        <p class="text-xs text-cyan-300">提示：锁宝箱🔒需要钥匙才能开启，陷阱💥会额外消耗1次挖掘机会</p>
+      </div>
+    </div>`;
+  } else {
+    // ===== 无进行中的会话：展示入口 =====
+    content = `
+    <div class="bg-card border border-game rounded-xl p-4">
+      <div class="text-center mb-4">
+        <div class="text-5xl mb-2">⛏️🗺️</div>
+        <h2 class="font-bold text-xl text-yellow-400 mb-1">挖密藏</h2>
+        <p class="text-xs text-secondary">消耗密藏图开启九宫格挖宝，初始4次挖掘机会</p>
+      </div>
+      ${toolsHtml}
+      <div class="bg-panel border border-game rounded-lg p-3 mb-4">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-sm font-bold">📊 今日次数</span>
+          <span class="text-sm ${used >= DIG_DAILY_LIMIT ? 'text-red-400' : 'text-green-400'}">${used} / ${DIG_DAILY_LIMIT}</span>
+        </div>
+        <div class="w-full bg-card rounded-full h-2 overflow-hidden">
+          <div class="bg-gradient-to-r from-yellow-600 to-yellow-400 h-full rounded-full transition-all" style="width:${Math.min(100, used / DIG_DAILY_LIMIT * 100)}%"></div>
+        </div>
+      </div>
+      <button class="btn-gold w-full py-3 text-lg font-bold mb-4" 
+        ${digMapCount <= 0 || used >= DIG_DAILY_LIMIT ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : 'onclick="startDigSession()"'}
+      >🗺️ 开始挖宝 ${digMapCount > 0 ? '(消耗1张密藏图)' : '(需要密藏图)'}</button>
+      ${legendHtml}
+      <div class="bg-panel border border-game rounded-lg p-3 space-y-1">
+        <p class="text-xs text-yellow-400 font-bold mb-1">📜 玩法说明</p>
+        <p class="text-xs text-secondary">• 消耗1张密藏图开启一局，3×3九宫格中暗藏宝物与陷阱</p>
+        <p class="text-xs text-secondary">• 初始4次挖掘机会，点击格子进行挖掘</p>
+        <p class="text-xs text-secondary">• 🔍 透视镜：选中格子后透视，不消耗挖掘次数</p>
+        <p class="text-xs text-secondary">• ⛏️ 探宝铲：增加1次挖掘机会（上限9次）</p>
+        <p class="text-xs text-secondary">• 🗝️ 密藏钥匙：开启锁宝箱格（挖到时自动消耗）</p>
+        <p class="text-xs text-secondary">• 💥 陷阱：额外损失1次挖掘机会</p>
+        <p class="text-xs text-orange-400">• 🌟 黄金宝藏：彩蛋级奖励，含钻石+高阶宠物蛋+月华露</p>
+      </div>
+    </div>`;
+  }
+
+  return `
+  <div class="min-h-screen flex flex-col">
+    <header class="bg-panel border-b border-game px-4 py-3 flex items-center justify-between">
+      <h1 class="font-fantasy text-gold text-lg">⛏️ 挖密藏</h1>
+      <span class="text-sm text-secondary">每日 ${DIG_DAILY_LIMIT} 次</span>
+    </header>
+    <nav class="bg-panel border-b border-game px-2 py-2 flex flex-wrap gap-1 overflow-x-auto">${renderNav()}</nav>
+    <main class="flex-1 p-4 max-w-5xl mx-auto w-full space-y-4">
+      ${content}
+    </main>
+  </div>`;
+}
+
+// 选中格子（用于透视功能）
+function selectDigCell(idx) {
+  if (!G.digSession) return;
+  var cell = G.digSession.grid[idx];
+  if (!cell || cell.revealed) return;
+  window._digSelectedCell = (window._digSelectedCell === idx) ? undefined : idx;
+  render();
 }
 
 function buyTreasureMap(rarity) {
@@ -7259,11 +8048,20 @@ function useTreasureMap(idx) {
 }
 
 function navigateTo(screen) {
-  currentScreen = screen;
-  render();
-  if (screen === 'main' && liveBattle) {
-    setTimeout(() => renderBattleArena(), 50);
-  }
+// 需求5：功能等级限制检查
+if (typeof SCREEN_FEATURE_MAP !== 'undefined' && SCREEN_FEATURE_MAP[screen]) {
+var featureId = SCREEN_FEATURE_MAP[screen];
+if (typeof isFeatureUnlocked === 'function' && !isFeatureUnlocked(featureId)) {
+var reqLv = getFeatureUnlockLevel(featureId);
+showToast('🔒 需要 ' + reqLv + ' 级才能解锁此功能', 'error');
+return;
+}
+}
+currentScreen = screen;
+render();
+if (screen === 'main' && liveBattle) {
+setTimeout(() => renderBattleArena(), 50);
+}
 }
 
 function setEggTierFilter(tier) {
@@ -7273,7 +8071,7 @@ function setEggTierFilter(tier) {
 
 function changeMap(mapId) {
   G.player.currentMap = parseInt(mapId);
-  if (autoBattleInterval && liveBattle) {
+  if (autoBattleInterval && (liveBattle || walkPhase)) {
     stopLiveBattle();
     spawnMonster();
     if (currentScreen === 'main') render();
@@ -7308,7 +8106,7 @@ function toggleAutoBattle() {
     showToast('开始自动挂机战斗！', 'success');
   }
   render();
-  if (liveBattle) setTimeout(() => renderBattleArena(), 50);
+  if (liveBattle || walkPhase) setTimeout(() => renderBattleArena(), 50);
 }
 
 function manualBattle() {
@@ -7378,6 +8176,11 @@ function closePetDetail() {
 
 // 需求7：在宠物详情页植入血统珠的弹窗
 function showBloodOrbImplantModal(petId) {
+  // v2.2.0 需求2：血统植入功能等级锁定（安全检查）
+  if (typeof isFeatureUnlocked === 'function' && !isFeatureUnlocked('bloodline')) {
+    showToast('🔒 需要 Lv.' + getFeatureUnlockLevel('bloodline') + ' 解锁血统植入功能', 'error');
+    return;
+  }
   window._bloodOrbImplantPetId = petId;
   render();
 }
@@ -8109,6 +8912,8 @@ function completeHatch(eggId) {
   G.statistics.totalHatches++;
   updateAchievement('hatch', 1);
   updateDailyTask('hatch_egg', 1);
+  // 需求1：主线任务进度更新（孵化类）
+  if (typeof updateMainQuest === 'function') updateMainQuest('hatch', 1);
   // 宠物收藏家：统计唯一宠物种类数
   var uniqueNames = {};
   G.pets.forEach(function(p){ uniqueNames[p.name] = true; });
@@ -8611,7 +9416,7 @@ function closeEquipBagModal() {
 }
 
 // 任务14：宠物秘境已整合到特殊副本系统，通过 enterSpecialDungeon('pet_equip_cave') 进入
-// 旧的 enterPetEquipDungeon 已移除，旧存档的 petEquipDungeonUsed 字段保留以向后兼容
+// 旧的 enterPetEquipDungeon 已移除，petEquipDungeonUsed 字段已在 checkDailyReset 中清理
 // 需求12：宠物秘境已从 DUNGEONS 移到活动页面，但仍复用 enterSpecialDungeon 进入战斗
 // 由于 pet_equip_cave 不再在 DUNGEONS 中，这里使用一个兜底配置保证函数仍可工作
 const PET_EQUIP_CAVE_FALLBACK = { id: 'pet_equip_cave', name: '宠物秘境', type: 'special', minLv: 20, desc: '挑战神秘秘境，获取宠物装备', ticketItem: 'pet_ticket' };
@@ -8801,6 +9606,86 @@ function buyListing(listingId) {
 function claimTask(taskId) {
   if (claimDailyTask(taskId)) {
     showToast('领取成功！', 'success');
+    saveGame();
+    render();
+  }
+}
+
+// 需求10：领取周常任务奖励
+function claimWeeklyTaskUI(taskId) {
+  if (claimWeeklyTask(taskId)) {
+    showToast('领取成功！', 'success');
+    saveGame();
+    render();
+  }
+}
+
+// 需求10：一键领取所有日常任务
+function claimAllDailyUI() {
+  var count = claimAllDailyTasks();
+  if (count > 0) {
+    showToast('🎁 一键领取 ' + count + ' 个日常任务奖励！', 'success');
+    saveGame();
+    render();
+  } else {
+    showToast('没有可领取的日常任务', 'info');
+  }
+}
+
+// 需求10：一键领取所有周常任务
+function claimAllWeeklyUI() {
+  var count = claimAllWeeklyTasks();
+  if (count > 0) {
+    showToast('🎁 一键领取 ' + count + ' 个周常任务奖励！', 'success');
+    saveGame();
+    render();
+  } else {
+    showToast('没有可领取的周常任务', 'info');
+  }
+}
+
+// 需求1：领取主线任务奖励
+function claimMainQuestUI() {
+  if (typeof claimMainQuest !== 'function') return;
+  if (claimMainQuest()) {
+    showToast('🎉 主线任务奖励已领取！', 'success');
+    saveGame();
+    render();
+  } else {
+    showToast('任务尚未完成', 'error');
+  }
+}
+
+// 需求5：血色要塞 - 开始活动
+function startCrimsonFortressUI(difficultyId) {
+  if (typeof startCrimsonFortress !== 'function') return;
+  var result = startCrimsonFortress(difficultyId);
+  if (!result.ok) {
+    showToast(result.msg, 'error');
+    return;
+  }
+  // 生成第一轮怪物并开始战斗
+  if (typeof beginCrimsonFortressBattle === 'function') {
+    beginCrimsonFortressBattle();
+  }
+}
+
+// 需求5：血色要塞 - 选择增益buff
+function selectCrimsonFortressBuffUI(buffId) {
+  if (typeof selectCrimsonFortressBuff !== 'function') return;
+  if (selectCrimsonFortressBuff(buffId)) {
+    saveGame();
+    render();
+  }
+}
+
+// 需求5：血色要塞 - 放弃活动
+function abandonCrimsonFortressUI() {
+  if (!G.crimsonFortress || !G.crimsonFortress.active) return;
+  if (!confirm('确定放弃血色要塞？将按当前击杀数结算奖励')) return;
+  var result = endCrimsonFortress();
+  if (result) {
+    showToast('🏰 血色要塞结束！击杀 ' + result.kills + ' 怪，经验 +' + result.exp + '，金币 +' + result.gold, 'success');
     saveGame();
     render();
   }
