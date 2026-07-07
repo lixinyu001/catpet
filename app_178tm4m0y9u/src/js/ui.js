@@ -2092,6 +2092,30 @@ function renderPetDetailModal() {
         }
         return '<div class="grid grid-cols-2 gap-2 mb-2">' + cells + '</div>' + pager;
       })()}
+      ${(() => {
+        // 需求8：附加技能栏——展示宠物装备附带的技能，不占6格上限
+        var equipSkills = (typeof getEquipSkills === 'function') ? getEquipSkills(pet) : [];
+        if (equipSkills.length === 0) return '';
+        var skillHtml = equipSkills.map(function(skill) {
+          var typeIcon = getSkillTypeIcon(skill.type);
+          var tierLabel = skill.tier ? getSkillTierLabel(skill.tier) : '';
+          var tierColor = skill.tier ? getSkillTierColor(skill.tier) : '#94a3b8';
+          var typeBg = skill.type === 'active' ? 'bg-red-900 text-red-300' : skill.type === 'aura' ? 'bg-yellow-900 text-yellow-300' : 'bg-blue-900 text-blue-300';
+          return '<div class="bg-panel rounded-lg p-2 border border-emerald-600/50" style="background:linear-gradient(135deg,rgba(16,185,129,0.08),rgba(16,185,129,0.02))">' +
+            '<div class="flex items-center gap-1 mb-1 flex-wrap">' +
+              '<span class="text-xs px-1 py-0.5 rounded ' + typeBg + '">' + typeIcon + '</span>' +
+              (tierLabel ? '<span class="text-xs px-1 py-0.5 rounded font-bold" style="background:' + tierColor + '22;color:' + tierColor + '">' + tierLabel + '</span>' : '') +
+              '<span class="text-xs px-1 py-0.5 rounded bg-emerald-900 text-emerald-300 font-bold">🎽装备</span>' +
+            '</div>' +
+            '<p class="font-bold text-xs text-emerald-300">' + skill.name + '</p>' +
+            '<p class="text-xs text-secondary mt-0.5">' + (skill.desc || '') + '</p>' +
+          '</div>';
+        }).join('');
+        return '<div class="mb-4">' +
+          '<h3 class="font-bold text-sm mb-2">🎽 附加技能 <span class="text-xs text-emerald-400">（装备附带，不占技能格）</span></h3>' +
+          '<div class="grid grid-cols-2 gap-2">' + skillHtml + '</div>' +
+        '</div>';
+      })()}
       ${books.length > 0 ? `
       <div class="mb-4">
         <h3 class="font-bold text-sm mb-2">📖 打书（选择技能书使用）</h3>
@@ -5639,15 +5663,19 @@ function renderFusionScreen() {
       contentHtml += '<div class="space-y-2">';
       extractedOrbs.forEach(function(orb) {
         var ob = BLOODLINE_SKILLS.find(function(b) { return b.id === orb.bloodlineId; });
+        // 需求1：优先显示来源宠物的专属血统名称与描述
+        var petDexEntry = (typeof PET_BLOODLINE_DEX !== 'undefined' && orb.sourcePetName) ? PET_BLOODLINE_DEX[orb.sourcePetName] : null;
+        var blName = petDexEntry ? petDexEntry.name : (ob ? ob.name : '未知血统');
+        var blDesc = petDexEntry ? petDexEntry.desc : (ob ? ob.desc : '');
         var qColor = BLOOD_ORB_QUALITY_COLORS[orb.quality] || '#9ca3af';
         var qName = BLOOD_ORB_QUALITY_NAMES[orb.quality] || orb.quality;
         var decompTier = BLOOD_ORB_DECOMPOSE_RULES[orb.quality];
         var decompDef = decompTier ? BLOOD_ORB_TIERS.find(function(t) { return t.id === decompTier; }) : null;
         contentHtml += '<div class="bg-panel rounded-lg p-2 border border-game flex items-center justify-between gap-2">' +
           '<div class="flex-1 text-xs">' +
-            '<p class="font-bold" style="color:' + qColor + ';">' + (ob ? ob.name : '未知血统') + '·' + qName + '</p>' +
+            '<p class="font-bold" style="color:' + qColor + ';">' + blName + '·' + qName + '</p>' +
             '<p class="text-secondary">来源：' + orb.sourcePetName + '（' + (orb.sourcePetRace || '?') + '）</p>' +
-            '<p class="text-secondary">' + (ob ? ob.desc : '') + '</p>' +
+            '<p class="text-secondary">' + blDesc + '</p>' +
             (decompDef ? '<p class="text-yellow-400 mt-1">分解可得：' + decompDef.name + ' x1</p>' : '') +
           '</div>' +
           '<button class="btn-danger text-xs px-2 py-1" onclick="decomposeExtractedBloodOrb(\'' + orb.id + '\')">🔥 分解</button>' +
@@ -8275,14 +8303,18 @@ function renderBloodOrbImplantModal() {
     listHtml = '<div class="space-y-2">';
     orbs.forEach(function(orb) {
       var ob = BLOODLINE_SKILLS.find(function(b) { return b.id === orb.bloodlineId; });
+      // 需求1：优先显示来源宠物的专属血统名称与描述
+      var petDexEntry = (typeof PET_BLOODLINE_DEX !== 'undefined' && orb.sourcePetName) ? PET_BLOODLINE_DEX[orb.sourcePetName] : null;
+      var blName = petDexEntry ? petDexEntry.name : (ob ? ob.name : '未知血统');
+      var blDesc = petDexEntry ? petDexEntry.desc : (ob ? ob.desc : '');
       var qColor = (typeof BLOOD_ORB_QUALITY_COLORS !== 'undefined') ? (BLOOD_ORB_QUALITY_COLORS[orb.quality] || '#9ca3af') : '#9ca3af';
       var qName = (typeof BLOOD_ORB_QUALITY_NAMES !== 'undefined') ? (BLOOD_ORB_QUALITY_NAMES[orb.quality] || orb.quality) : orb.quality;
       var canApply = !pet.bloodlineOrb || pet.bloodlineOrb.orbItemId !== orb.id;
       listHtml += '<div class="bg-panel rounded-lg p-2 border border-game flex items-center justify-between gap-2">' +
         '<div class="flex-1 text-xs">' +
-          '<p class="font-bold" style="color:' + qColor + ';">' + (ob ? ob.name : '未知血统') + '·' + qName + '</p>' +
+          '<p class="font-bold" style="color:' + qColor + ';">' + blName + '·' + qName + '</p>' +
           '<p class="text-secondary">来源：' + (orb.sourcePetName || '?') + '（' + (orb.sourcePetRace || '?') + '）</p>' +
-          '<p class="text-secondary">' + (ob ? ob.desc : '') + '</p>' +
+          '<p class="text-secondary">' + blDesc + '</p>' +
         '</div>' +
         '<button class="btn-primary text-xs px-2 py-1" ' + (!canApply ? 'disabled style="opacity:0.4;cursor:not-allowed"' : '') + ' onclick="applyBloodOrbToPet(\'' + pet.id + '\',\'' + orb.id + '\')">植入</button>' +
       '</div>';

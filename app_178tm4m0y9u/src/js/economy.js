@@ -465,12 +465,13 @@ function getPetEquipBonus(pet) {
         // 成长不受封印影响
         result.growthAddition += a.value;
       } else if (affixDef.kind === 'skill') {
-        // 需求8：技能词条不受封印影响，装备时附加对应被动技能
+        // 需求8：技能词条不受封印影响，装备时附加对应技能（不占6格上限）
         var skillId = a.value;
         if (skillId && typeof ALL_SKILLS !== 'undefined') {
           var skill = ALL_SKILLS.find(function(s) { return s.id === skillId; });
           if (skill) {
-            result.skillAdditions.push({ id: skill.id, name: skill.name, type: skill.type, desc: skill.desc, icon: skill.icon || '✨', isEquipSkill: true });
+            // 推送完整技能对象（含effect/tier等），并标记为装备技能
+            result.skillAdditions.push(Object.assign({}, skill, { isEquipSkill: true }));
           }
         }
       }
@@ -1831,9 +1832,9 @@ function extractPetBloodline(petId, orbTierId) {
   }
   saveGame();
   // 需求2：修复抽取血统时文本提示与实际不一致的Bug
-  // 使用 getPetBloodline 获取宠物实际显示的血统名称（含PET_BLOODLINE_DEX专属名），而非BLOODLINE_SKILLS通用名
+  // 使用 getPetBloodlineSkill 获取宠物实际显示的血统名称（含PET_BLOODLINE_DEX专属名），而非BLOODLINE_SKILLS通用名
   var bDef = BLOODLINE_SKILLS.find(function(b) { return b.id === bloodlineId; });
-  var actualBl = (typeof getPetBloodline === 'function') ? getPetBloodline(pet) : null;
+  var actualBl = (typeof getPetBloodlineSkill === 'function') ? getPetBloodlineSkill(pet) : null;
   var blDisplayName = actualBl ? actualBl.name : (bDef ? bDef.name : '血统');
   var qName = BLOOD_ORB_QUALITY_NAMES[quality] || quality;
   showToast('🔮 成功抽取 ' + petName + ' 的血统！宠物已消耗，获得 ' + qName + '品质「' + blDisplayName + '」', 'success');

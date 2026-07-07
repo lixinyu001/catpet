@@ -682,7 +682,15 @@ function getPetCombatPower(pet) {
 }
 
 function getAllSkills(pet) {
-  return [...pet.innateSkills, ...pet.learnedSkills];
+  var skills = [...pet.innateSkills, ...pet.learnedSkills];
+  // 需求8：宠物装备附加技能不占用6格上限，直接追加到技能列表
+  if (typeof getPetEquipBonus === 'function' && pet.petEquipment) {
+    var bonus = getPetEquipBonus(pet);
+    if (bonus.skillAdditions && bonus.skillAdditions.length > 0) {
+      skills = skills.concat(bonus.skillAdditions);
+    }
+  }
+  return skills;
 }
 
 function getBloodlineSkill(pet) {
@@ -693,7 +701,18 @@ function getBloodlineSkill(pet) {
 }
 
 function getNormalSkills(pet) {
-  return getAllSkills(pet).filter(s => s.type !== 'bloodline');
+  return getAllSkills(pet).filter(s => s.type !== 'bloodline' && !s.isEquipSkill);
+}
+
+// 需求8：获取宠物装备附加技能列表（不占6格上限）
+function getEquipSkills(pet) {
+  if (typeof getPetEquipBonus === 'function' && pet.petEquipment) {
+    var bonus = getPetEquipBonus(pet);
+    if (bonus.skillAdditions && bonus.skillAdditions.length > 0) {
+      return bonus.skillAdditions;
+    }
+  }
+  return [];
 }
 
 function getMaxSkillSlots(pet) {
