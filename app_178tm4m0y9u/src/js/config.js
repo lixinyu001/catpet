@@ -1116,13 +1116,33 @@ function formatBloodlineEffects(effects) {
 function generatePetBloodlineSkill(pet) {
   if (!pet || !pet.name) return null;
   // 融合限定宠物保持原血统
+  // 辅助函数：从 PET_BLOODLINE_MECHANICS 查找机制数据
+  function _getMechanics(petName) {
+    if (typeof PET_BLOODLINE_MECHANICS !== 'undefined' && PET_BLOODLINE_MECHANICS[petName]) {
+      return PET_BLOODLINE_MECHANICS[petName];
+    }
+    return [];
+  }
   var fusionBlMap = FUSION_PET_BLOODLINES || {};
   if (fusionBlMap[pet.name]) {
-    return BLOODLINE_SKILLS.find(function(b) { return b.id === fusionBlMap[pet.name]; });
+    var fusionSkill = BLOODLINE_SKILLS.find(function(b) { return b.id === fusionBlMap[pet.name]; });
+    if (fusionSkill) {
+      // 附加 TCA 机制数据（副本，避免污染原对象）
+      var fusionCopy = Object.assign({}, fusionSkill);
+      fusionCopy.mechanics = _getMechanics(pet.name);
+      return fusionCopy;
+    }
+    return fusionSkill;
   }
   // 已植入血统珠
   if (pet.bloodlineOrb && pet.bloodlineOrb.bloodlineId) {
-    return BLOODLINE_SKILLS.find(function(b) { return b.id === pet.bloodlineOrb.bloodlineId; });
+    var orbSkill = BLOODLINE_SKILLS.find(function(b) { return b.id === pet.bloodlineOrb.bloodlineId; });
+    if (orbSkill) {
+      var orbCopy = Object.assign({}, orbSkill);
+      orbCopy.mechanics = _getMechanics(pet.name);
+      return orbCopy;
+    }
+    return orbSkill;
   }
 // 需求4：基于宠物名生成独特血统
 var dex = getPetDex(pet.name);
@@ -1152,7 +1172,9 @@ effects[k] = Math.round(baseEffects[k] * mult * 100) / 100;
     var effectStr = formatBloodlineEffects(effects);
     desc = '【' + specLabel + '系血统】' + effectStr;
   }
-  return { id: blId, name: blName, type: 'bloodline', race: dex.race, tier: tier, desc: desc, effects: effects, specialty: specialty };
+  var mechanics = _getMechanics(pet.name);
+
+  return { id: blId, name: blName, type: 'bloodline', race: dex.race, tier: tier, desc: desc, effects: effects, specialty: specialty, mechanics: mechanics };
 }
 
 // 根据宠物名获取其专属血统技能ID（基于名字哈希 + 种族 + 专长）

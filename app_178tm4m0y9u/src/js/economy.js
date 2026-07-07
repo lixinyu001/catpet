@@ -175,6 +175,13 @@ function generatePetEquip(rarity, slot, level) {
     } else if (affix.kind === 'growth') {
       // 成长类：0.05-0.20
       value = Math.round(randomFloat(0.05, 0.20) * valScale * 100) / 100;
+    } else if (affix.kind === 'skill') {
+      // 需求8：技能词条类——从技能池随机选一个技能ID作为值
+      if (affix.skillPool && affix.skillPool.length > 0) {
+        value = pickRandom(affix.skillPool);
+      } else {
+        value = ''; // 无技能池则跳过
+      }
     }
     affixes.push({ id: affix.id, value: value });
   }
@@ -457,6 +464,15 @@ function getPetEquipBonus(pet) {
       } else if (affixDef.kind === 'growth') {
         // 成长不受封印影响
         result.growthAddition += a.value;
+      } else if (affixDef.kind === 'skill') {
+        // 需求8：技能词条不受封印影响，装备时附加对应被动技能
+        var skillId = a.value;
+        if (skillId && typeof ALL_SKILLS !== 'undefined') {
+          var skill = ALL_SKILLS.find(function(s) { return s.id === skillId; });
+          if (skill) {
+            result.skillAdditions.push({ id: skill.id, name: skill.name, type: skill.type, desc: skill.desc, icon: skill.icon || '✨', isEquipSkill: true });
+          }
+        }
       }
     });
   });
@@ -643,7 +659,8 @@ function getRefineGoldCost(item) {
 }
 
 // 洗练：重新随机装备所有词条（消耗1个洗练石 + 金币）
-function refineEquipment(equipId) {
+// 需求4：支持单一词条定向刷新——传入 affixIndex 时仅刷新指定词条，其余保持不变
+function refineEquipment(equipId, affixIndex) {
   // 等级检查
   if (typeof isFeatureUnlocked === 'function' && !isFeatureUnlocked('equip_refine')) {
     showToast('🔒 需要' + getFeatureUnlockLevel('equip_refine') + '级解锁装备洗练', 'error');
@@ -657,14 +674,16 @@ function refineEquipment(equipId) {
     showToast('❌ 该装备没有词条可洗练', 'error');
     return;
   }
+  // 需求4：定向刷新模式校验
+  var isSingleMode = (affixIndex !== undefined && affixIndex !== null && affixIndex >= 0 && affixIndex < item.affixes.length);
   // 检查洗练石
   var stone = G.inventory.find(function(i) { return i.id === 'refine_stone'; });
   if (!stone || stone.count < 1) {
     showToast('❌ 需要1个洗练石', 'error');
     return;
   }
-  // 检查金币
-  var goldCost = getRefineGoldCost(item);
+  // 检查金币（定向刷新消耗为全额的60%）
+  var goldCost = isSingleMode ? Math.floor(getRefineGoldCost(item) * 0.6) : getRefineGoldCost(item);
   if (G.player.gold < goldCost) {
     showToast('❌ 金币不足，需要 ' + goldCost.toLocaleString() + ' 金币', 'error');
     return;
@@ -677,12 +696,44 @@ function refineEquipment(equipId) {
   }
   G.player.gold -= goldCost;
 
-  // 重新生成词条
+  var level = item.level || 1;
+  var isOrange = item.rarity === 'orange';
+
+  // 需求4：定向刷新——仅刷新指定词条，其余保持不变
+  if (isSingleMode) {
+    // 收集已有词条ID（排除要刷新的那个）
+    var usedIdsSingle = {};
+    item.affixes.forEach(function(a, i) { if (i !== affixIndex) usedIdsSingle[a.id] = true; });
+    // 随机新词条（排除已有词条）
+    var newAffix = null;
+    var attempts = 0;
+    do {
+      newAffix = pickRandom(AFFIX_TYPES);
+      attempts++;
+    } while (usedIdsSingle[newAffix.id] && attempts < 30);
+    var val = newAffix.id.endsWith('_pct') ? randomFloat(0.03, 0.12) :
+              newAffix.id === 'crit_rate' || newAffix.id === 'dodge_rate' ? randomFloat(0.02, 0.08) :
+              newAffix.id === 'pet_dmg' || newAffix.id === 'pet_def' || newAffix.id === 'pet_hp' ? randomFloat(0.05, 0.15) :
+              randomInt(level, level * 3);
+    // 如果原词条是特殊词条，新词条也尽量保持特殊
+    if (item.affixes[affixIndex].special) {
+      var specialPoolSingle = AFFIX_TYPES.filter(function(a) { return a.special && !usedIdsSingle[a.id]; });
+      if (specialPoolSingle.length > 0) {
+        newAffix = pickRandom(specialPoolSingle);
+        val = randomFloat(0.05, 0.15);
+      }
+    }
+    item.affixes[affixIndex] = { id: newAffix.id, name: newAffix.name, format: newAffix.format, value: Math.round(val * 100) / 100, special: newAffix.special || false };
+    saveGame();
+    showToast('✨ 定向洗练成功！第' + (affixIndex + 1) + '条词条已刷新（消耗 ' + goldCost.toLocaleString() + ' 金币）', 'success');
+    if (typeof render === 'function') render();
+    return;
+  }
+
+  // 全部洗练模式（原逻辑）
   var affixCount = item.affixes.length;
   var newAffixes = [];
   var usedAffixIds = {};
-  var level = item.level || 1;
-  var isOrange = item.rarity === 'orange';
 
   for (var i = 0; i < affixCount; i++) {
     var affix = null;
@@ -725,10 +776,24 @@ return MAX_GEM_SLOTS;
 }
 
 // ==================== 人物修炼系统（20级开启） ====================
+// 需求5：重构修炼系统——不再单纯增加基础属性，而是提供额外伤害加成/减免
+// 3种修炼方向：伤害修炼（增加宠物最终结算伤害加成）、抗性修炼（最终伤害减免）、辅助修炼（治疗效果加成）
+// 计算公式参考：伤害 = 攻击力 * 技能系数 * (1 + 装备宠物伤害加成) * (1 + 修炼等级 * 0.02)
 
 var CULTIVATION_MAX_LEVEL = 50;
-var CULTIVATION_PER_LEVEL_BONUS = 2; // 每级+2属性
-var CULTIVATION_ATTRS = ['力量', '体质', '敏捷', '智力'];
+var CULTIVATION_PER_LEVEL_BONUS = 0.02; // 每级+2%加成
+var CULTIVATION_TYPES = ['伤害', '抗性', '辅助'];
+var CULTIVATION_TYPE_NAMES = {
+  '伤害': '伤害修炼',
+  '抗性': '抗性修炼',
+  '辅助': '辅助修炼',
+};
+var CULTIVATION_TYPE_DESCS = {
+  '伤害': '增加宠物最终结算伤害加成（每级+2%伤害）',
+  '抗性': '提供最终伤害减免（每级+2%减伤）',
+  '辅助': '提升治疗效果加成（每级+2%治疗）',
+};
+var CULTIVATION_TYPE_ICONS = { '伤害': '⚔️', '抗性': '🛡️', '辅助': '💚' };
 
 // 修炼金币消耗公式：随等级递增
 function getCultivationGoldCost(currentLevel) {
@@ -740,16 +805,32 @@ function getCultivationGoldCost(currentLevel) {
   return (lv + 1) * 50000;                    // 41-50级：2050000~2550000
 }
 
-// 获取修炼总加成
+// 获取修炼总加成（用于战斗计算）
+// 返回 { dmgBonus, dmgReduce, healBonus } 均为小数百分比
 function getCultivationBonus() {
-  if (!G.player.cultivation) G.player.cultivation = { 力量: 0, 体质: 0, 敏捷: 0, 智力: 0 };
+  if (!G.player.cultivation) G.player.cultivation = { 伤害: 0, 抗性: 0, 辅助: 0 };
   var c = G.player.cultivation;
   return {
-    力量: (c.力量 || 0) * CULTIVATION_PER_LEVEL_BONUS,
-    体质: (c.体质 || 0) * CULTIVATION_PER_LEVEL_BONUS,
-    敏捷: (c.敏捷 || 0) * CULTIVATION_PER_LEVEL_BONUS,
-    智力: (c.智力 || 0) * CULTIVATION_PER_LEVEL_BONUS,
+    dmgBonus: (c.伤害 || 0) * CULTIVATION_PER_LEVEL_BONUS,
+    dmgReduce: (c.抗性 || 0) * CULTIVATION_PER_LEVEL_BONUS,
+    healBonus: (c.辅助 || 0) * CULTIVATION_PER_LEVEL_BONUS,
   };
+}
+
+// 旧版四维修炼兼容迁移
+function migrateCultivationSystem() {
+  if (!G.player.cultivation) { G.player.cultivation = { 伤害: 0, 抗性: 0, 辅助: 0 }; return; }
+  var c = G.player.cultivation;
+  // 检测旧版四维属性
+  if (c.力量 !== undefined || c.体质 !== undefined || c.敏捷 !== undefined || c.智力 !== undefined) {
+    var oldTotal = (c.力量 || 0) + (c.体质 || 0) + (c.敏捷 || 0) + (c.智力 || 0);
+    // 将旧四维总等级按比例转换为新系统
+    G.player.cultivation = {
+      伤害: Math.floor(oldTotal * 0.4),
+      抗性: Math.floor(oldTotal * 0.4),
+      辅助: Math.floor(oldTotal * 0.2),
+    };
+  }
 }
 
 // 修炼属性
@@ -759,14 +840,14 @@ function cultivateAttribute(attr) {
     showToast('🔒 需要' + getFeatureUnlockLevel('cultivation') + '级解锁人物修炼', 'error');
     return;
   }
-  if (CULTIVATION_ATTRS.indexOf(attr) < 0) {
-    showToast('❌ 无效的修炼属性', 'error');
+  if (CULTIVATION_TYPES.indexOf(attr) < 0) {
+    showToast('❌ 无效的修炼方向', 'error');
     return;
   }
-  if (!G.player.cultivation) G.player.cultivation = { 力量: 0, 体质: 0, 敏捷: 0, 智力: 0 };
+  if (!G.player.cultivation) G.player.cultivation = { 伤害: 0, 抗性: 0, 辅助: 0 };
   var currentLv = G.player.cultivation[attr] || 0;
   if (currentLv >= CULTIVATION_MAX_LEVEL) {
-    showToast('✅ ' + attr + '修炼已满级（' + CULTIVATION_MAX_LEVEL + '级）', 'info');
+    showToast('✅ ' + CULTIVATION_TYPE_NAMES[attr] + '已满级（' + CULTIVATION_MAX_LEVEL + '级）', 'info');
     return;
   }
   var goldCost = getCultivationGoldCost(currentLv);
@@ -778,8 +859,8 @@ function cultivateAttribute(attr) {
   G.player.cultivation[attr] = currentLv + 1;
   saveGame();
   var newLv = G.player.cultivation[attr];
-  var bonus = newLv * CULTIVATION_PER_LEVEL_BONUS;
-  showToast('🌀 ' + attr + '修炼提升至 ' + newLv + ' 级！当前加成：' + attr + ' +' + bonus + '（消耗 ' + goldCost.toLocaleString() + ' 金币）', 'success');
+  var bonusPct = (newLv * CULTIVATION_PER_LEVEL_BONUS * 100).toFixed(0);
+  showToast('🌀 ' + CULTIVATION_TYPE_NAMES[attr] + '提升至 ' + newLv + ' 级！当前加成：' + bonusPct + '%（消耗 ' + goldCost.toLocaleString() + ' 金币）', 'success');
   if (typeof render === 'function') render();
 }
 
@@ -789,8 +870,8 @@ function cultivateMax(attr) {
     showToast('🔒 需要' + getFeatureUnlockLevel('cultivation') + '级解锁人物修炼', 'error');
     return;
   }
-  if (CULTIVATION_ATTRS.indexOf(attr) < 0) return;
-  if (!G.player.cultivation) G.player.cultivation = { 力量: 0, 体质: 0, 敏捷: 0, 智力: 0 };
+  if (CULTIVATION_TYPES.indexOf(attr) < 0) return;
+  if (!G.player.cultivation) G.player.cultivation = { 伤害: 0, 抗性: 0, 辅助: 0 };
   var count = 0;
   var totalGold = 0;
   while (G.player.cultivation[attr] < CULTIVATION_MAX_LEVEL) {
@@ -806,7 +887,7 @@ function cultivateMax(attr) {
   if (count > 0) {
     saveGame();
     var newLv = G.player.cultivation[attr];
-    showToast('🌀 ' + attr + '修炼连升 ' + count + ' 级！当前等级：' + newLv + '（消耗 ' + totalGold.toLocaleString() + ' 金币）', 'success');
+    showToast('🌀 ' + CULTIVATION_TYPE_NAMES[attr] + '连升 ' + count + ' 级！当前等级：' + newLv + '（消耗 ' + totalGold.toLocaleString() + ' 金币）', 'success');
   } else {
     showToast('❌ 金币不足，无法修炼', 'error');
   }
@@ -1541,7 +1622,7 @@ function startActivityBattleModal(opts) {
     }
     logs.push({ turn: turn, actor: 'pet', target: petNames[t % petNames.length], dmg: petDmg, enemyHpLeft: enemyHp, petHpLeft: petHp });
     // 敌人攻击
-    var enemyDmg = Math.floor(petMaxHp / (success ? 9 : 5) * (0.8 + Math.random() * 0.4));
+    var enemyDmg = Math.floor(petMaxHp / (success ? 9 : 5) * (0.8 + Math.random() * 0.4) * 0.8); // 需求14：活动怪物伤害下调20%
     petHp -= enemyDmg;
     if (petHp <= 0) {
       logs.push({ turn: turn, actor: 'enemy', target: '怪物', dmg: enemyDmg, enemyHpLeft: enemyHp, petHpLeft: 0 });
@@ -1749,9 +1830,13 @@ function extractPetBloodline(petId, orbTierId) {
     G.player.activeTeam = G.player.activeTeam.filter(function(id) { return id !== petId; });
   }
   saveGame();
+  // 需求2：修复抽取血统时文本提示与实际不一致的Bug
+  // 使用 getPetBloodline 获取宠物实际显示的血统名称（含PET_BLOODLINE_DEX专属名），而非BLOODLINE_SKILLS通用名
   var bDef = BLOODLINE_SKILLS.find(function(b) { return b.id === bloodlineId; });
+  var actualBl = (typeof getPetBloodline === 'function') ? getPetBloodline(pet) : null;
+  var blDisplayName = actualBl ? actualBl.name : (bDef ? bDef.name : '血统');
   var qName = BLOOD_ORB_QUALITY_NAMES[quality] || quality;
-  showToast('🔮 成功抽取 ' + petName + ' 的血统！宠物已消耗，获得 ' + qName + '品质「' + (bDef ? bDef.name : '血统') + '」', 'success');
+  showToast('🔮 成功抽取 ' + petName + ' 的血统！宠物已消耗，获得 ' + qName + '品质「' + blDisplayName + '」', 'success');
   // 需求3：每日任务追踪
   if (typeof updateDailyTask === 'function') updateDailyTask('bloodline_extract', 1);
   // 清理血统抽取页面选中的宠物引用（已被消耗）
@@ -2591,7 +2676,7 @@ function generateCrimsonFortressMonster() {
   // 怪物属性
   var lvScale = 1 + monsterLv * 0.012;
   var baseHp = Math.floor((40 + monsterLv * 20) * 5 * lvScale * powerMult);
-  var baseAtk = Math.floor((4 + monsterLv * 3.8) * 5 * lvScale * powerMult);
+  var baseAtk = Math.floor((4 + monsterLv * 3.8) * 5 * lvScale * powerMult * 0.8); // 需求14：活动怪物伤害下调20%
   var finalHp = baseHp + randomInt(-Math.floor(baseHp * 0.05), Math.floor(baseHp * 0.05));
   // 随机种族
   var races = ['史莱姆', '哥布林', '精灵', '野兽', '龙族', '亡灵'];

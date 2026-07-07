@@ -24,7 +24,17 @@ window.__GAME_LOADED__ = true;
       initMainQuest();
     }
 
+    // 需求15：初始化游戏内时间系统
+    if (typeof updateGameTime === 'function') {
+      updateGameTime();
+    }
+
     render();
+
+    // 需求3：恢复孵化进程（基于时间戳计算离线进度）
+    if (typeof resumeHatching === 'function') {
+      resumeHatching();
+    }
 
     if (G.pets && G.pets.length === 0 && !G.newPlayerGiftClaimed) {
       currentScreen = 'main';
@@ -51,6 +61,10 @@ window.__GAME_LOADED__ = true;
 setInterval(() => { saveGame(); }, 30000);
 // 每秒刷新buff栏（更新剩余时间）
 setInterval(() => { if (typeof renderBuffBar === 'function') renderBuffBar(); }, 1000);
+// 需求15：每5秒检查游戏时间阶段切换
+setInterval(function() { if (typeof updateGameTime === 'function') updateGameTime(); }, 5000);
+// 需求15：每秒刷新时间显示
+setInterval(function() { if (typeof renderTimeBar === 'function') renderTimeBar(); }, 1000);
 // v2.2.0 需求3：战斗卡死看门狗——每5秒检查一次，如果自动挂机中但无战斗/走路/定时器，则恢复
 setInterval(function() {
   if (typeof autoBattleInterval === 'undefined' || typeof liveBattle === 'undefined') return;

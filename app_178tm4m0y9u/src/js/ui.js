@@ -1094,8 +1094,9 @@ function render() {
     if (viewingPetId) app.innerHTML += renderPetDetailModal();
     if (window._bloodOrbImplantPetId) app.innerHTML += renderBloodOrbImplantModal();
     if (window._activityBattle) app.innerHTML += renderActivityBattleModal();
-    bindEvents();
-    renderBuffBar();
+bindEvents();
+renderTimeBar();
+renderBuffBar();
   } catch(e) {
     console.error('Render error:', e);
     const errMsg = (e && e.message) ? e.message : String(e || '未知错误');
@@ -1157,6 +1158,30 @@ function submitRedeemCode() {
   render();
   showToast(def.msg, 'success');
   closeRedeemModal();
+}
+// 需求15：渲染游戏内时间栏
+function renderTimeBar() {
+var bar = document.getElementById('timeBar');
+if (!bar) return;
+if (typeof getCurrentTimePhase !== 'function') return;
+var phase = getCurrentTimePhase();
+var remaining = (typeof getTimePhaseRemainingText === 'function') ? getTimePhaseRemainingText() : '';
+var nextPhase = (typeof getNextTimePhase === 'function') ? getNextTimePhase() : null;
+var effects = phase.effects || {};
+var effectParts = [];
+if (effects.expMult && effects.expMult !== 1) effectParts.push('经验' + (effects.expMult > 1 ? '+' : '') + Math.round((effects.expMult - 1) * 100) + '%');
+if (effects.goldMult && effects.goldMult !== 1) effectParts.push('金币' + (effects.goldMult > 1 ? '+' : '') + Math.round((effects.goldMult - 1) * 100) + '%');
+if (effects.eggDropMult && effects.eggDropMult !== 1) effectParts.push('掉蛋' + (effects.eggDropMult > 1 ? '+' : '') + Math.round((effects.eggDropMult - 1) * 100) + '%');
+if (effects.itemDropMult && effects.itemDropMult !== 1) effectParts.push('道具' + (effects.itemDropMult > 1 ? '+' : '') + Math.round((effects.itemDropMult - 1) * 100) + '%');
+if (effects.monsterAtkMult && effects.monsterAtkMult !== 1) effectParts.push('怪物攻击+' + Math.round((effects.monsterAtkMult - 1) * 100) + '%');
+var effectText = effectParts.length > 0 ? effectParts.join('，') : '无加成';
+var html = '<div class="time-bar-chip" style="background:linear-gradient(135deg,' + phase.color + '22,' + phase.color + '11);border:1px solid ' + phase.color + '66;color:' + phase.color + ';" title="' + phase.desc + ' | 效果：' + effectText + '">' +
+'<span style="font-size:1rem;">' + phase.icon + '</span>' +
+'<span style="font-weight:bold;font-size:0.75rem;">' + phase.name + '</span>' +
+'<span style="font-size:0.7rem;opacity:0.8;">' + remaining + '</span>' +
+(nextPhase ? '<span style="font-size:0.65rem;opacity:0.6;">→' + nextPhase.icon + '</span>' : '') +
+'</div>';
+bar.innerHTML = html;
 }
 function renderBuffBar() {
   var bar = document.getElementById('buffBar');
@@ -1584,14 +1609,14 @@ function renderMainScreen() {
             ${autoBattleInterval ? '⏸ 停止挂机' : '▶ 开始挂机'}
           </button>
           <div class="flex items-center gap-1 bg-panel rounded-lg p-1">
-            ${[1,2,4,8,16,32].map(s => {
-              const unlocked = s <= 4 || (s === 8 && G.player.rebirth >= 1) || (s === 16 && G.player.rebirth >= 3) || (s === 32 && G.player.rebirth >= 5);
-              if (!unlocked) {
-                const req = s === 8 ? '转生1' : s === 16 ? '转生3' : '转生5';
-                return `<button class="speed-btn opacity-30 cursor-not-allowed text-xs" disabled title="需要${req}次解锁">${s}x</button>`;
-              }
-              return `<button class="speed-btn ${G.battleSpeed === s ? 'active' : ''}" onclick="setBattleSpeed(${s})">${s}x</button>`;
-            }).join('')}
+${[1,2,4,8,16,32].map(s => {
+const unlocked = s <= 4 || (s === 8 && G.player.rebirth >= 1) || (s === 16 && G.player.rebirth >= 3) || (s === 32 && G.player.rebirth >= 5);
+if (!unlocked) {
+const req = s === 8 ? '转生1' : s === 16 ? '转生3' : '转生5';
+return `<button class="speed-btn opacity-30 cursor-not-allowed text-xs" disabled title="需要${req}次解锁">${(s*1.5)}x</button>`;
+}
+return `<button class="speed-btn ${G.battleSpeed === s ? 'active' : ''}" onclick="setBattleSpeed(${s})">${(s*1.5)}x</button>`;
+}).join('')}
           </div>
           <span class="text-xs text-secondary">${autoBattleInterval ? (walkPhase ? '🐾 探索中...' : '挂机中...') : '已停止'}</span>
           <button class="text-xs px-2 py-1 rounded border border-game ${G.autoOpenChests ? 'text-green-400' : 'text-secondary'}" onclick="toggleAutoChests()">
@@ -1906,7 +1931,7 @@ function renderPetDetailModal() {
                 var d = PET_AFFIX_TYPES.find(function(t){return t.id===a.id;});
                 return d ? '<div class="text-xs text-green-400">' + d.format(a.value) + '</div>' : '';
               }).join('') +
-              (e.setId ? (function(){var s = PET_EQUIP_SETS.find(function(x){return x.id===e.setId;}); return s?'<div class="text-xs font-bold" style="color:'+s.color+'">['+s.name+']</div>':'';})() : '') +
+              (e.setId ? (function(){var s = PET_EQUIP_SETS.find(function(x){return x.id===e.setId;}); return s?'<div class="text-xs font-bold" style="color:'+s.color+'">['+s.name+']</div><div class="text-[10px] text-secondary mt-0.5">2件：'+s.desc+'</div><div class="text-[10px] text-secondary">3件：'+s.desc3+'</div>':'';})() : '') +
               sealInfo +
               '</div>';
           }
@@ -4159,6 +4184,18 @@ function renderRefineSheet() {
     }).join(' ');
   }
 
+  // 需求4：带定向刷新按钮的词条展示
+  function getAffixHtmlWithRefine(item, canRefineSingle) {
+    var singleGoldCost = Math.floor(getRefineGoldCost(item) * 0.6);
+    return (item.affixes || []).map(function(a, idx) {
+      var cls = a.special ? 'text-orange-400' : 'text-green-400';
+      var valStr = typeof a.format === 'function' ? a.format(a.value) : ('+' + a.value);
+      var refineBtn = canRefineSingle ?
+        '<button class="btn-sm text-[10px] px-1 py-0.5 rounded bg-purple-800 text-purple-200 border border-purple-600 hover:bg-purple-700" onclick="refineEquipment(\'' + item.id + '\',' + idx + ')">🔄</button>' : '';
+      return '<div class="flex items-center gap-1"><span class="' + cls + ' text-xs px-1.5 py-0.5 rounded bg-panel">' + valStr + '</span>' + refineBtn + '</div>';
+    }).join(' ');
+  }
+
   var equipsHtml = allEquips.map(function(entry) {
     var item = entry.item;
     var rarityIdx = EQUIP_RARITIES.indexOf(item.rarity);
@@ -4166,7 +4203,9 @@ function renderRefineSheet() {
     var isEquipped = entry.location === 'equipped';
     var affixCount = (item.affixes || []).length;
     var goldCost = getRefineGoldCost(item);
+    var singleGoldCost = Math.floor(goldCost * 0.6);
     var canRefine = stoneCount > 0 && G.player.gold >= goldCost;
+    var canRefineSingle = stoneCount > 0 && G.player.gold >= singleGoldCost;
     var baseStatStr = getEquipBaseStatText(item);
     var forgeLv = (G.player.forgeLevels && G.player.forgeLevels[item.slot]) || 0;
 
@@ -4179,13 +4218,15 @@ function renderRefineSheet() {
       '<span class="text-xs text-secondary">Lv.' + item.level + (isEquipped ? ' · 已装备' : '') + (forgeLv > 0 ? ' · +' + forgeLv : '') + '</span>' +
       '</div>' +
       '<div class="text-xs text-secondary mb-1">' + baseStatStr + '</div>' +
-      '<div class="flex flex-wrap gap-1 mb-1">' + getAffixHtml(item) + '</div>' +
-      '<div class="text-xs text-secondary">词条数：' + affixCount + ' · 洗练消耗：' +
-      '<span class="text-purple-400">🔮×1</span> + <span class="text-yellow-400">' + goldCost.toLocaleString() + '金币</span></div>' +
+      // 需求4：每个词条旁显示定向刷新按钮
+      '<div class="flex flex-wrap gap-1 mb-1">' + getAffixHtmlWithRefine(item, canRefineSingle) + '</div>' +
+      '<div class="text-xs text-secondary">词条数：' + affixCount + '</div>' +
+      '<div class="text-xs text-secondary">全部洗练：<span class="text-purple-400">🔮×1</span> + <span class="text-yellow-400">' + goldCost.toLocaleString() + '金币</span></div>' +
+      '<div class="text-xs text-secondary">定向洗练：<span class="text-purple-400">🔮×1</span> + <span class="text-yellow-400">' + singleGoldCost.toLocaleString() + '金币</span></div>' +
       '</div>' +
       '<div class="flex flex-col gap-1">' +
       (canRefine ?
-        '<button class="btn-primary btn-sm text-xs" onclick="refineEquipment(\'' + item.id + '\')">🔮 洗练</button>' :
+        '<button class="btn-primary btn-sm text-xs" onclick="refineEquipment(\'' + item.id + '\')">🔮 全部洗练</button>' :
         '<button class="btn-sm text-xs opacity-40" disabled>' + (stoneCount <= 0 ? '缺洗练石' : '金币不足') + '</button>') +
       '</div>' +
       '</div>' +
@@ -4195,8 +4236,10 @@ function renderRefineSheet() {
   var rulesHtml = '<div class="bg-card border border-game rounded-xl p-4">' +
     '<h2 class="font-bold text-lg mb-3">🔮 洗练规则</h2>' +
     '<div class="text-xs text-secondary space-y-1">' +
-    '<p>· 洗练会<span class="text-purple-400">重新随机</span>装备的<span class="text-green-400">所有词条</span>类型与数值</p>' +
-    '<p>· 每次洗练消耗 <span class="text-purple-400">1个洗练石</span> + <span class="text-yellow-400">装备等级×200 金币</span></p>' +
+    '<p>· <span class="text-purple-400">全部洗练</span>：重新随机装备的<span class="text-green-400">所有词条</span>类型与数值</p>' +
+    '<p>· 全部洗练消耗 <span class="text-purple-400">1个洗练石</span> + <span class="text-yellow-400">装备等级×200 金币</span></p>' +
+    '<p>· <span class="text-cyan-400">定向洗练</span>：点击词条旁的🔄按钮，仅刷新该词条，其余保持不变</p>' +
+    '<p>· 定向洗练消耗 <span class="text-purple-400">1个洗练石</span> + <span class="text-yellow-400">全额金币的60%</span></p>' +
     '<p>· 词条池包含19种词条：力量/体质/敏捷/智力/气血/攻击/防御（数值&百分比）、暴击率、闪避率、宠物伤害/防御/气血</p>' +
     '<p>· <span class="text-orange-400">橙色装备</span>洗练后保证保留1个宠物专属词条（宠物伤害/防御/气血）</p>' +
     '<p>· 词条数值范围与装备生成时一致（数值类：level~level×3，百分比类：3%~12%）</p>' +
@@ -4227,38 +4270,32 @@ function renderCultivationSheet() {
     return '<div class="bg-card border border-game rounded-xl p-6 text-center">' +
       '<div class="text-4xl mb-3">🔒</div>' +
       '<p class="text-secondary text-sm">人物修炼功能将在 <span class="text-gold font-bold">Lv.' + unlockLv + '</span> 解锁</p>' +
-      '<p class="text-xs text-secondary mt-2">修炼大师端坐在蒲团上：「内外兼修，方能突破极限。修炼你的四维属性，让宠物也更加强大！」</p>' +
+      '<p class="text-xs text-secondary mt-2">修炼大师端坐在蒲团上：「内外兼修，方能突破极限。修炼你的伤害、抗性与辅助，让宠物也更加强大！」</p>' +
       '</div>';
   }
 
-  if (!G.player.cultivation) G.player.cultivation = { 力量: 0, 体质: 0, 敏捷: 0, 智力: 0 };
+  if (!G.player.cultivation) G.player.cultivation = { 伤害: 0, 抗性: 0, 辅助: 0 };
   var cult = G.player.cultivation;
   var cultBonus = getCultivationBonus();
 
-  var attrIcons = { 力量: '⚔️', 体质: '❤️', 敏捷: '💨', 智力: '🔮' };
-  var attrColors = { 力量: '#ef4444', 体质: '#22c55e', 敏捷: '#eab308', 智力: '#a855f7' };
-  var attrDescs = {
-    力量: '影响攻击力，20%继承给宠物',
-    体质: '影响气血与防御，20%继承给宠物',
-    敏捷: '影响速度与闪避，20%继承给宠物',
-    智力: '影响法术与魔法值，20%继承给宠物',
-  };
+  var attrColors = { '伤害': '#ef4444', '抗性': '#3b82f6', '辅助': '#22c55e' };
 
-  var cardsHtml = CULTIVATION_ATTRS.map(function(attr) {
+  var cardsHtml = CULTIVATION_TYPES.map(function(attr) {
     var currentLv = cult[attr] || 0;
     var isMax = currentLv >= CULTIVATION_MAX_LEVEL;
     var goldCost = getCultivationGoldCost(currentLv);
     var canCultivate = !isMax && G.player.gold >= goldCost;
-    var bonus = cultBonus[attr];
+    var bonusPct = (currentLv * CULTIVATION_PER_LEVEL_BONUS * 100).toFixed(0);
     var pct = Math.floor((currentLv / CULTIVATION_MAX_LEVEL) * 100);
-    var barColor = attrColors[attr];
+    var barColor = attrColors[attr] || '#888';
+    var icon = CULTIVATION_TYPE_ICONS[attr] || '🌀';
+    var typeName = CULTIVATION_TYPE_NAMES[attr] || attr;
+    var typeDesc = CULTIVATION_TYPE_DESCS[attr] || '';
 
-    // 进度条
     var barHtml = '<div class="w-full bg-panel rounded-full h-2 mt-2 overflow-hidden">' +
       '<div class="h-full rounded-full transition-all" style="width:' + pct + '%;background:' + barColor + '"></div>' +
       '</div>';
 
-    // 修炼阶段
     var stage = '初学';
     if (currentLv >= 40) stage = '宗师';
     else if (currentLv >= 30) stage = '大师';
@@ -4268,18 +4305,18 @@ function renderCultivationSheet() {
     return '<div class="bg-panel border border-game rounded-lg p-3">' +
       '<div class="flex items-center justify-between mb-2">' +
       '<div class="flex items-center gap-2">' +
-      '<span class="text-lg">' + attrIcons[attr] + '</span>' +
+      '<span class="text-lg">' + icon + '</span>' +
       '<div>' +
-      '<span class="text-sm font-bold" style="color:' + barColor + '">' + attr + '修炼</span>' +
+      '<span class="text-sm font-bold" style="color:' + barColor + '">' + typeName + '</span>' +
       '<span class="text-xs text-secondary ml-1">· ' + stage + '</span>' +
       '</div>' +
       '</div>' +
       '<div class="text-right">' +
       '<span class="text-sm font-bold text-gold">Lv.' + currentLv + '/' + CULTIVATION_MAX_LEVEL + '</span>' +
-      '<span class="text-xs text-green-400 ml-1">(+' + bonus + ')</span>' +
+      '<span class="text-xs text-green-400 ml-1">(+' + bonusPct + '%)</span>' +
       '</div>' +
       '</div>' +
-      '<p class="text-xs text-secondary">' + attrDescs[attr] + '</p>' +
+      '<p class="text-xs text-secondary">' + typeDesc + '</p>' +
       barHtml +
       '<div class="flex items-center justify-between mt-2">' +
       '<div class="text-xs">' +
@@ -4298,9 +4335,7 @@ function renderCultivationSheet() {
       '</div>';
   }).join('');
 
-  // 总加成汇总
-  var totalBonus = cultBonus.力量 + cultBonus.体质 + cultBonus.敏捷 + cultBonus.智力;
-  var totalLevels = (cult.力量 || 0) + (cult.体质 || 0) + (cult.敏捷 || 0) + (cult.智力 || 0);
+  var totalLevels = (cult.伤害 || 0) + (cult.抗性 || 0) + (cult.辅助 || 0);
 
   var summaryHtml = '<div class="bg-card border border-game rounded-xl p-4 mb-3">' +
     '<div class="flex items-center justify-between mb-2">' +
@@ -4308,19 +4343,22 @@ function renderCultivationSheet() {
     '<span class="text-sm text-yellow-400">🪙 ' + G.player.gold.toLocaleString() + '</span>' +
     '</div>' +
     '<div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">' +
-    '<div class="bg-panel rounded-lg p-2 text-center"><p class="text-xs text-secondary">总修炼等级</p><p class="text-lg font-bold text-gold">' + totalLevels + '/' + (CULTIVATION_MAX_LEVEL * 4) + '</p></div>' +
-    '<div class="bg-panel rounded-lg p-2 text-center"><p class="text-xs text-secondary">总属性加成</p><p class="text-lg font-bold text-green-400">+' + totalBonus + '</p></div>' +
-    '<div class="bg-panel rounded-lg p-2 text-center"><p class="text-xs text-secondary">宠物继承加成</p><p class="text-lg font-bold text-cyan-400">+' + Math.floor(totalBonus * 0.20) + '</p></div>' +
-    '<div class="bg-panel rounded-lg p-2 text-center"><p class="text-xs text-secondary">修炼阶段</p><p class="text-sm font-bold text-purple-400">' + (totalLevels >= 160 ? '一代宗师' : totalLevels >= 120 ? '出神入化' : totalLevels >= 80 ? '登堂入室' : totalLevels >= 40 ? '初窥门径' : '初学乍练') + '</p></div>' +
+    '<div class="bg-panel rounded-lg p-2 text-center"><p class="text-xs text-secondary">总修炼等级</p><p class="text-lg font-bold text-gold">' + totalLevels + '/' + (CULTIVATION_MAX_LEVEL * 3) + '</p></div>' +
+    '<div class="bg-panel rounded-lg p-2 text-center"><p class="text-xs text-secondary">伤害加成</p><p class="text-lg font-bold text-red-400">+' + (cultBonus.dmgBonus * 100).toFixed(0) + '%</p></div>' +
+    '<div class="bg-panel rounded-lg p-2 text-center"><p class="text-xs text-secondary">伤害减免</p><p class="text-lg font-bold text-blue-400">+' + (cultBonus.dmgReduce * 100).toFixed(0) + '%</p></div>' +
+    '<div class="bg-panel rounded-lg p-2 text-center"><p class="text-xs text-secondary">治疗加成</p><p class="text-lg font-bold text-green-400">+' + (cultBonus.healBonus * 100).toFixed(0) + '%</p></div>' +
     '</div>' +
     '</div>';
 
   var rulesHtml = '<div class="bg-card border border-game rounded-xl p-4">' +
     '<h2 class="font-bold text-lg mb-3">🌀 修炼规则</h2>' +
     '<div class="text-xs text-secondary space-y-1">' +
-    '<p>· 修炼可永久提升人物<span class="text-green-400">四维属性</span>（力量/体质/敏捷/智力），每级 <span class="text-green-400">+' + CULTIVATION_PER_LEVEL_BONUS + '</span></p>' +
-    '<p>· 修炼加成通过人物属性 <span class="text-cyan-400">20%继承</span> 给所有出战宠物</p>' +
-    '<p>· 每条修炼轨道最高 <span class="text-gold">' + CULTIVATION_MAX_LEVEL + ' 级</span>，总属性加成最高 +' + (CULTIVATION_MAX_LEVEL * CULTIVATION_PER_LEVEL_BONUS * 4) + '</p>' +
+    '<p>· 需求5：修炼不再增加基础属性，而是提供<span class="text-green-400">最终伤害加成/减免</span></p>' +
+    '<p>· <span class="text-red-400">⚔️ 伤害修炼</span>：增加宠物最终结算伤害加成（每级+2%）</p>' +
+    '<p>· <span class="text-blue-400">🛡️ 抗性修炼</span>：提供最终伤害减免（每级+2%）</p>' +
+    '<p>· <span class="text-green-400">💚 辅助修炼</span>：提升治疗效果加成（每级+2%）</p>' +
+    '<p>· 计算公式：伤害 = 攻击力 × 技能系数 × (1 + 装备宠物伤害加成) × (1 + 修炼等级 × 0.02)</p>' +
+    '<p>· 每条修炼轨道最高 <span class="text-gold">' + CULTIVATION_MAX_LEVEL + ' 级</span></p>' +
     '<p>· 修炼消耗金币，随等级递增：</p>' +
     '<p class="pl-4">· 1-10级：2,000~20,000 金币/级</p>' +
     '<p class="pl-4">· 11-20级：55,000~105,000 金币/级</p>' +
@@ -4329,14 +4367,14 @@ function renderCultivationSheet() {
     '<p class="pl-4">· 41-50级：2,050,000~2,550,000 金币/级</p>' +
     '<p>· 修炼阶段：初学(0) → 熟练(10) → 精通(20) → 大师(30) → 宗师(40)</p>' +
     '<p>· <span class="text-yellow-400">⚡一键修炼</span>：连续修炼直到金币不足或满级（单次最多100级）</p>' +
-    '<p>· 修炼属性<span class="text-purple-400">永久生效</span>，转生后保留</p>' +
+    '<p>· 修炼加成<span class="text-purple-400">永久生效</span>，转生后保留</p>' +
     '</div>' +
     '</div>';
 
   return summaryHtml +
     '<div class="bg-card border border-game rounded-xl p-4">' +
-    '<h2 class="font-bold text-lg mb-3">🌀 四维修炼</h2>' +
-    '<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">' + cardsHtml + '</div>' +
+    '<h2 class="font-bold text-lg mb-3">🌀 三维修炼</h2>' +
+    '<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">' + cardsHtml + '</div>' +
     '</div>' +
     rulesHtml;
 }
@@ -4778,7 +4816,7 @@ function renderPetEquipScreen() {
           }).join('');
           var setInfo = e.setId ? (function() {
             var set = PET_EQUIP_SETS.find(function(s) { return s.id === e.setId; });
-            return set ? '<div class="text-xs font-bold mt-1" style="color:' + set.color + '">[' + set.name + '套装]</div>' : '';
+            return set ? '<div class="text-xs font-bold mt-1" style="color:' + set.color + '">[' + set.name + '套装]</div><div class="text-[10px] text-secondary mt-0.5">2件：' + set.desc + '</div><div class="text-[10px] text-secondary">3件：' + set.desc3 + '</div>' : '';
           })() : '';
           return '<div class="bg-panel border border-game rounded-lg p-3">' +
             '<div class="flex items-center gap-1 mb-1">' +
@@ -4919,7 +4957,7 @@ function showPetEquipManageModal(petId) {
       }).join('');
       var setInfo = e.setId ? (function() {
         var set = PET_EQUIP_SETS.find(function(s) { return s.id === e.setId; });
-        return set ? '<div class="text-xs font-bold mt-1" style="color:' + set.color + '">[' + set.name + ']</div>' : '';
+        return set ? '<div class="text-xs font-bold mt-1" style="color:' + set.color + '">[' + set.name + ']</div><div class="text-[10px] text-secondary mt-0.5">2件：' + set.desc + '</div><div class="text-[10px] text-secondary">3件：' + set.desc3 + '</div>' : '';
       })() : '';
       return '<div class="bg-panel border rounded-lg p-3" style="border-color:' + PET_EQUIP_RARITY_COLORS[rarityIdx] + '">' +
         '<div class="flex items-center justify-between mb-1">' +
@@ -5721,19 +5759,34 @@ function renderAdvanceSheet() {
 
   var html = '<div class="bg-card border border-game rounded-xl p-4 mb-4">' +
     '<h2 class="font-bold text-lg mb-2">⭐ 宠物进阶</h2>' +
-    '<p class="text-xs text-secondary mb-3">选择一只可进阶的宠物，使用进阶丸累积进阶值。T1→T3 需要 500 进阶值，T3→T5 需要 2000 进阶值。进阶后宠物的成长、资质、技能和血统技能都会大幅强化。</p>' +
+    '<p class="text-xs text-secondary mb-3">选择一只可进阶的宠物，使用进阶丸累积进阶值。T3→T6 需要 2000 进阶值。进阶后宠物的成长、资质、技能和血统技能都会大幅强化。</p>' +
     '<div class="mb-4">' +
-      '<p class="text-sm font-bold mb-2">选择宠物（仅显示可进阶宠物）</p>' +
-      '<select id="advancePetSelect" class="w-full" onchange="selectAdvancePet(this.value)">' +
-        '<option value="">-- 选择宠物 --</option>' +
-        G.pets.map(function(p) {
-          var stage = p.advanceStage || 0;
-          var adv = getPetAdvanceInfo(p);
-          var canAdv = !!adv;
-          var stageLabel = stage === 0 ? '基础' : stage === 1 ? '进阶+1' : '进阶+2';
-          return '<option value="' + p.id + '"' + (selectedPetId === p.id ? ' selected' : '') + (canAdv ? '' : ' disabled') + '>' + p.name + ' (' + stageLabel + (adv ? ' → ' + adv.nextName : '') + ' · 进阶值 ' + (p.advanceValue||0) + (adv ? '/' + adv.threshold : '') + ')</option>';
-        }).join('') +
-      '</select>' +
+      '<p class="text-sm font-bold mb-2">选择宠物（可进阶宠物高亮显示，点击选择）</p>' +
+      // 需求6：用宠物卡片网格替代下拉列表，修复点击无法选中的交互问题
+      '<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 max-h-64 overflow-y-auto p-1">' +
+      G.pets.map(function(p) {
+        var stage = p.advanceStage || 0;
+        var adv = getPetAdvanceInfo(p);
+        var canAdv = !!adv;
+        var stageLabel = stage === 0 ? '基础' : stage === 1 ? '进阶+1' : '进阶+2';
+        var isSelected = selectedPetId === p.id;
+        // 需求6：可进阶宠物绿色高亮边框，不可进阶灰色半透明
+        var borderCls = isSelected ? 'border-yellow-500 bg-yellow-900/30' :
+                        canAdv ? 'border-green-600 bg-green-900/20 cursor-pointer hover:bg-green-900/40' :
+                        'border-game bg-panel opacity-40 cursor-not-allowed';
+        var badge = canAdv ? '<span class="text-[10px] text-green-400 font-bold">✅ 可进阶</span>' : '<span class="text-[10px] text-secondary">不可进阶</span>';
+        var advText = adv ? ' → ' + adv.nextName : '';
+        var clickHandler = canAdv ? ('onclick="selectAdvancePet(\'' + p.id + '\')"') : '';
+        return '<div class="border rounded-lg p-2 ' + borderCls + '" ' + clickHandler + '>' +
+          '<div class="flex items-center justify-between mb-1">' +
+          '<span class="text-xs font-bold">' + getPetDisplayName(p) + '</span>' +
+          badge +
+          '</div>' +
+          '<div class="text-[10px] text-secondary">' + stageLabel + advText + '</div>' +
+          (adv ? '<div class="text-[10px] text-yellow-400">进阶值 ' + (p.advanceValue||0) + '/' + adv.threshold + '</div>' : '<div class="text-[10px] text-secondary">—</div>') +
+        '</div>';
+      }).join('') +
+      '</div>' +
     '</div>';
 
   if (selectedPet && advInfo) {
@@ -7106,12 +7159,31 @@ function renderActivityDispatch() {
       var exp = Math.floor(DISPATCH_BASE_REWARD.exp * totalMult);
       var matCount = Math.max(1, Math.floor(DISPATCH_BASE_REWARD.materialCount * totalMult));
       var rareChance = Math.min(0.5, DISPATCH_BASE_REWARD.rareChance * bonus);
+      // 需求13：将材料ID替换为具体道具图标与名称展示
+      var matIcons = { forge_stone_low: '⚒️', forge_stone_mid: '⚒️', forge_stone_high: '⚒️',
+        mystic_crystal_low: '💠', mystic_crystal_mid: '💠', mystic_crystal_high: '💠',
+        ancient_rune_low: '📜', ancient_rune_mid: '📜', ancient_rune_high: '📜' };
+      var matNames = (typeof getItemName === 'function') ? null : PET_EQUIP_MATERIAL_NAMES;
+      function getMatDisplay(matId) {
+        var icon = matIcons[matId] || (PET_EQUIP_MATERIAL_ICONS && PET_EQUIP_MATERIAL_ICONS[matId]) || '📦';
+        var name = (typeof getItemName === 'function') ? getItemName(matId) : (PET_EQUIP_MATERIAL_NAMES && PET_EQUIP_MATERIAL_NAMES[matId]) || matId;
+        return icon + ' ' + name;
+      }
+      function getRareDisplay(rareId) {
+        var rareIcons = { rare_egg: '🥚', blood_orb_low: '🔴', blood_orb_mid: '🔴', blood_orb_high: '🔴', skill_random: '📖' };
+        var icon = rareIcons[rareId] || '🎁';
+        var name = (typeof getItemName === 'function') ? getItemName(rareId) : rareId;
+        if (rareId === 'skill_random') name = '随机技能书';
+        return icon + ' ' + name;
+      }
+      var matsDisplay = selMap.materials.map(getMatDisplay).join('、');
+      var rareDisplay = selMap.rarePool.map(getRareDisplay).join('、');
       html += '<div class="bg-black/30 rounded p-2 mb-3 text-xs">' +
         '<p class="text-yellow-400 font-bold mb-1">📦 预计收益：</p>' +
-        '<p>· 金币 <span class="text-yellow-400">+' + gold.toLocaleString() + '</span></p>' +
-        '<p>· 经验 <span class="text-blue-400">+' + exp.toLocaleString() + '</span></p>' +
-        '<p>· 养成材料 <span class="text-purple-400">×' + matCount + '</span>（' + selMap.materials.join('、') + '）</p>' +
-        '<p>· 稀有掉落概率 <span class="text-pink-400">' + (rareChance * 100).toFixed(1) + '%</span>（' + selMap.rarePool.join('、') + '）</p>' +
+        '<p>· 🪙 金币 <span class="text-yellow-400">+' + gold.toLocaleString() + '</span></p>' +
+        '<p>· 📗 经验 <span class="text-blue-400">+' + exp.toLocaleString() + '</span></p>' +
+        '<p>· 📦 养成材料 <span class="text-purple-400">×' + matCount + '</span>（' + matsDisplay + '）</p>' +
+        '<p>· 🎁 稀有掉落概率 <span class="text-pink-400">' + (rareChance * 100).toFixed(1) + '%</span>（' + rareDisplay + '）</p>' +
         '<p class="text-secondary mt-1">倍率：基础×' + DISPATCH_BASE_REWARD.gold + ' · 时长×' + dur.mult + ' · 地图×' + selMap.rewardMult + ' · 战力×' + bonus.toFixed(2) + '</p>' +
       '</div>';
     }
@@ -7135,7 +7207,7 @@ function renderActivityDispatch() {
     history.slice(0, 10).forEach(function(h) {
       var dur = DISPATCH_DURATIONS[h.durationIdx];
       var r = h.rewards || {};
-      var rareTxt = r.rareDrop ? ' · <span class="text-pink-400">稀有:' + r.rareDrop + '</span>' : '';
+      var rareTxt = r.rareDrop ? ' · <span class="text-pink-400">稀有:' + ((typeof getItemName === 'function') ? getItemName(r.rareDrop) : r.rareDrop) + '</span>' : '';
       html += '<div class="bg-panel rounded p-2 text-xs">' +
         '<div class="flex justify-between">' +
           '<span class="font-bold">' + (h.mapName || '未知') + '</span>' +
@@ -7270,8 +7342,8 @@ function startTreasureHunt() {
 
     if (victory) {
       killed++;
-      // 20%概率掉落藏宝图（受天赋影响）
-      var dropChance = 0.20 + mapDropBonus;
+      // 需求12：提升藏宝图掉落率至50%（受天赋影响），确保每日至少掉落4~6个
+      var dropChance = 0.50 + mapDropBonus;
       if (Math.random() < dropChance) {
         var rarityRoll = Math.random();
         var tmRarity = rarityRoll < 0.50 ? 'green' : rarityRoll < 0.80 ? 'blue' : rarityRoll < 0.95 ? 'purple' : 'orange';
@@ -8005,7 +8077,7 @@ function useTreasureMap(idx) {
   // 同步主地图：连续成长曲线 + 提升后的基础属性 + 藏宝图难度强化（boss×3）
   var lvScale = 1 + lv * 0.012;
   var baseHp = Math.floor((40 + lv * 20) * hpMult * 3 * lvScale * monsterPower);
-  var baseAtk = Math.floor((4 + lv * 3.8) * atkMult * 3 * lvScale * monsterPower);
+  var baseAtk = Math.floor((4 + lv * 3.8) * atkMult * 3 * lvScale * monsterPower * 0.8); // 需求14：活动怪物伤害下调20%
   const monster = {
     name: '藏宝图守卫', level: lv, enemyType: 'boss',
     hp: baseHp, maxHp: baseHp,
@@ -8864,21 +8936,58 @@ function startHatch(eggId) {
   G.hatchStones -= 1;
   egg.isHatching = true;
   egg.hatchProgress = 0;
-  const tick = () => {
-    // 需求7：孵化速度buff（hatch_mult > 1 时每tick增加多倍进度）
-    var hatchMult = (typeof getBuffMult === 'function') ? getBuffMult('hatch_mult') : 1;
-    egg.hatchProgress += hatchMult;
-    if (egg.hatchProgress >= egg.hatchTime) {
-      completeHatch(eggId);
-    } else {
-      hatchIntervals[eggId] = setTimeout(tick, 1000);
-      if (currentScreen === 'eggs') render();
-    }
-  };
-  hatchIntervals[eggId] = setTimeout(tick, 1000);
+  // 需求3：记录孵化开始时间戳，确保页面关闭后重新打开时孵化进程在后台持续计算
+  egg.hatchStartTime = Date.now();
+  egg.hatchBaseProgress = 0;
+  startHatchTimer(eggId);
   showToast('开始孵化宠物蛋！消耗1颗孵化石', 'info');
   saveGame();
   render();
+}
+
+// 需求3：孵化定时器核心逻辑（基于时间戳计算进度，支持后台持续计算）
+function startHatchTimer(eggId) {
+  const egg = G.eggs.find(e => e.id === eggId);
+  if (!egg || !egg.isHatching) return;
+  // 基于时间戳计算当前应有进度
+  var hatchMult = (typeof getBuffMult === 'function') ? getBuffMult('hatch_mult') : 1;
+  var elapsedSec = Math.floor((Date.now() - (egg.hatchStartTime || Date.now())) / 1000);
+  egg.hatchProgress = (egg.hatchBaseProgress || 0) + elapsedSec * hatchMult;
+  if (egg.hatchProgress >= egg.hatchTime) {
+    completeHatch(eggId);
+    return;
+  }
+  if (currentScreen === 'eggs') render();
+  hatchIntervals[eggId] = setTimeout(function() { startHatchTimer(eggId); }, 1000);
+}
+
+// 需求3：页面加载时恢复所有孵化中的蛋（基于时间戳计算离线期间进度）
+function resumeHatching() {
+  if (!G.eggs || !Array.isArray(G.eggs)) return;
+  G.eggs.forEach(function(egg) {
+    if (egg.isHatching && !hatchIntervals[egg.id]) {
+      // 计算离线期间进度推进
+      var hatchMult = (typeof getBuffMult === 'function') ? getBuffMult('hatch_mult') : 1;
+      if (egg.hatchStartTime) {
+        var elapsedSec = Math.floor((Date.now() - egg.hatchStartTime) / 1000);
+        var newProgress = (egg.hatchBaseProgress || 0) + elapsedSec * hatchMult;
+        if (newProgress >= egg.hatchTime) {
+          // 离线期间已孵化完成
+          egg.hatchProgress = egg.hatchTime;
+          completeHatch(egg.id);
+        } else {
+          // 更新进度并重启定时器
+          egg.hatchProgress = newProgress;
+          startHatchTimer(egg.id);
+        }
+      } else {
+        // 旧存档没有 hatchStartTime，以当前进度为基准重新开始计时
+        egg.hatchStartTime = Date.now();
+        egg.hatchBaseProgress = egg.hatchProgress || 0;
+        startHatchTimer(egg.id);
+      }
+    }
+  });
 }
 
 // 使用孵化加速器：消耗1个，减少30分钟（1800秒）孵化时间
@@ -8895,7 +9004,10 @@ function useHatchBoost(eggId) {
     egg.hatchProgress = egg.hatchTime;
     completeHatch(eggId);
   } else {
-    egg.hatchProgress += 1800;
+    // 需求3：同步更新时间戳基准，确保后台计算一致
+    egg.hatchBaseProgress = (egg.hatchBaseProgress || 0) + 1800;
+    egg.hatchStartTime = Date.now();
+    egg.hatchProgress = egg.hatchBaseProgress;
     showToast('⚡ 加速30分钟！剩余 ' + Math.ceil((egg.hatchTime - egg.hatchProgress) / 60) + ' 分钟', 'info');
     render();
   }
@@ -9468,7 +9580,7 @@ function enterSpecialDungeon(dungeonId) {
   // 同步主地图：连续成长曲线 + 提升后的基础属性 + 副本难度强化（小怪×5）
   var lvScale = 1 + lv * 0.012;
   const baseHp = Math.floor((40 + lv * 20) * 5 * lvScale);
-  const baseAtk = Math.floor((4 + lv * 3.8) * 5 * lvScale);
+  const baseAtk = Math.floor((4 + lv * 3.8) * 5 * lvScale * 0.8); // 需求14：活动怪物伤害下调20%
   // 任务14：宠物秘境固定5波，怪物名为"秘境守卫"；其他副本随机3~5波
   var isPetCave = dungeonId === 'pet_equip_cave';
   var monsterName = isPetCave ? '秘境守卫' : pickRandom(map ? map.monsters : ['怪物']);
@@ -9519,7 +9631,7 @@ function enterTeamDungeon(dungeonId) {
   // 同步主地图：连续成长曲线 + 提升后的基础属性 + 团本难度强化（精英×4）
   var lvScale = 1 + lv * 0.012;
   const bossHp = Math.floor((40 + lv * 20) * 3 * 4 * lvScale);
-  const bossAtk = Math.floor((4 + lv * 3.8) * 2 * 4 * lvScale);
+  const bossAtk = Math.floor((4 + lv * 3.8) * 2 * 4 * lvScale * 0.8); // 需求14：活动怪物伤害下调20%
   var teamBoss = { name: dungeon.bosses[0], level: lv, enemyType: 'elite', hp: bossHp, maxHp: bossHp, atk: bossAtk, def: Math.floor(lv * 2.0 * 1.6 * 1.5) };
   if (!teamBoss.speed) teamBoss.speed = Math.floor((teamBoss.level || 1) * 2 + 10);
   liveBattle = {

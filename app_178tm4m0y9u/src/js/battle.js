@@ -70,6 +70,9 @@ function getLayerMonster(mapId, forceType) {
   var lvScale = 1 + lv * 0.012;
   var baseHp = Math.floor((40 + lv * 20) * hpMult * lvScale);
   var baseAtk = Math.floor((4 + lv * 3.8) * atkMult * lvScale);
+  // 需求15：夜晚时间段怪物攻击力加成
+  var timeEff = (typeof getTimePhaseEffects === 'function') ? getTimePhaseEffects() : {};
+  if (timeEff.monsterAtkMult) baseAtk = Math.floor(baseAtk * timeEff.monsterAtkMult);
   // 起源草地（地图1）强度削弱一半
   if (mapId === 1) {
     baseHp = Math.floor(baseHp * 0.5);
@@ -138,8 +141,10 @@ const IDLE_EGG_REWARDS = [
 ];
 
 function getTurnDelay() {
-  const speeds = { 1: 1200, 2: 600, 4: 250, 8: 125, 16: 62, 32: 31 };
-  return speeds[G.battleSpeed] || 1200;
+  // 需求17：基础战斗速度提升至1.5倍，原1倍速→1.5倍速，原2倍速→3倍速，以此类推
+  // 基础延迟1200ms / 倍率 = 实际延迟
+  var mult = G.battleSpeed * 1.5; // 1→1.5, 2→3, 4→6, 8→12, 16→24, 32→48
+  return Math.max(1, Math.floor(1200 / mult));
 }
 
 // v2.2.0 需求1：走路动画时长（按战斗速度缩放）
@@ -266,6 +271,15 @@ function spawnMonsterDirect() {
   };
   if (currentScreen === 'main') renderBattleArena();
   buildTurnQueue();
+  // ===== 血统机制：战斗开始触发 =====
+  if (typeof triggerBloodlineMechanics === 'function') {
+    team.forEach(function(pet) {
+      if (typeof ensureBloodlineRuntime === 'function') ensureBloodlineRuntime(pet);
+      triggerBloodlineMechanics(pet, 'onBattleStart', { team: team });
+      // 被动血统效果（永久属性修改等）
+      triggerBloodlineMechanics(pet, 'passive', { team: team });
+    });
+  }
   scheduleNextTurn();
 }
 
@@ -396,11 +410,12 @@ function processWaveCleared() {
   }
   maybeDropTreasureMap();
   // v2.2.0 需求1：在线挂机彩蛋掉落（仅主线战斗，仅在线挂机时）
-  if (autoBattleInterval) maybeDropIdleEgg();
-  saveGame();
-  liveBattle = null;
-  if (currentScreen === 'main') render();
-  if (autoBattleInterval) {
+if (autoBattleInterval) maybeDropIdleEgg();
+saveGame();
+if (typeof cleanupBloodlineRT === 'function') cleanupBloodlineRT();
+liveBattle = null;
+if (currentScreen === 'main') render();
+if (autoBattleInterval) {
     battleSpawnTimer = setTimeout(() => {
       spawnMonster();
       if (currentScreen === 'main') {
@@ -432,6 +447,17 @@ function buildTurnQueue() {
   liveBattle.turnQueue = actors;
   liveBattle.round++;
   addBattleLog('info', '── 第 ' + liveBattle.round + ' 回合 ──');
+  // ===== 血统机制：回合开始触发 =====
+  if (typeof triggerBloodlineMechanics === 'function') {
+    liveBattle.team.forEach(function(pet) {
+      var hp = liveBattle.petHp[pet.id];
+      if (!hp || hp.current <= 0) return;
+      if (typeof resetBloodlinePerTurn === 'function') resetBloodlinePerTurn(pet);
+      triggerBloodlineMechanics(pet, 'onTurnStart', { round: liveBattle.round });
+    });
+    // 处理场地效果
+    if (typeof processFieldEffects === 'function') processFieldEffects();
+  }
 }
 
 function scheduleNextTurn() {
@@ -821,6 +847,23 @@ function executeNormalAttack(pet) {
   liveBattle.monsterHpArray[targetIdx] -= damage;
   liveBattle.totalDamage += damage;
 
+  // ===== 血统机制：攻击命中触发 =====
+  if (typeof triggerBloodlineMechanics === 'function') {
+    // 检查是否首次攻击（在 onAttackHit 设置标记之前）
+    var _rt = pet._bloodlineRT;
+    var _isFirstAtk = !_rt || !_rt.firstAttackDone;
+    var _attackCtx = {
+      target: monster, targetIdx: targetIdx, damage: damage, isCrit: isCrit,
+      lastHitDmg: damage
+    };
+    triggerBloodlineMechanics(pet, 'onAttackHit', _attackCtx);
+    triggerBloodlineMechanics(pet, 'onPhysicalAttackHit', _attackCtx);
+    triggerBloodlineMechanics(pet, 'onNormalAttackHit', _attackCtx);
+    if (_isFirstAtk) {
+      triggerBloodlineMechanics(pet, 'onFirstAttack', _attackCtx);
+    }
+  }
+
   // 需求1：怪物被动 reflectPct 反震（报复/反击/反震）
   if (tgtMPassivesAtk.reflectPct && damage > 0) {
     var reflectDmgM = Math.floor(damage * tgtMPassivesAtk.reflectPct);
@@ -887,6 +930,12 @@ function executeNormalAttack(pet) {
 
   if (liveBattle.monsterHpArray[targetIdx] <= 0) {
     liveBattle.monsterHpArray[targetIdx] = 0;
+    // ===== 血统机制：击杀触发 =====
+    if (typeof triggerBloodlineMechanics === 'function') {
+      triggerBloodlineMechanics(pet, 'onKill', {
+        target: monster, targetIdx: targetIdx, lastKillDmg: damage
+      });
+    }
     logMonsterKill(targetIdx);
     if (currentScreen === 'main') animateMonsterDeath(targetIdx);
     advanceWaveOrEndBattle();
@@ -957,6 +1006,11 @@ function executeActiveSkill(pet, skill) {
   const auras = getAuraEffects(liveBattle.team);
   const buffs = liveBattle.petBuffs[pet.id];
   const bloodline = getBloodlineSkill(pet);
+
+  // ===== 血统机制：技能释放触发 =====
+  if (typeof triggerBloodlineMechanics === 'function') {
+    triggerBloodlineMechanics(pet, 'onSkillCast', { skill: skill });
+  }
 
   // 消耗魔法值
   var mpCost = getSkillMpCost(skill);
@@ -1117,6 +1171,24 @@ function executeActiveSkill(pet, skill) {
         liveBattle.monsterHpArray[idx] -= dmg;
         liveBattle.totalDamage += dmg;
         totalDamage += dmg;
+        // ===== 血统机制：技能攻击命中触发 =====
+        if (typeof triggerBloodlineMechanics === 'function') {
+          var _skillRt = pet._bloodlineRT;
+          var _skillFirstAtk = !_skillRt || !_skillRt.firstAttackDone;
+          var _skillCtx = {
+            target: tgtMonster, targetIdx: idx, damage: dmg,
+            lastHitDmg: dmg, skill: skill
+          };
+          triggerBloodlineMechanics(pet, 'onAttackHit', _skillCtx);
+          if (isMagic) {
+            triggerBloodlineMechanics(pet, 'onMagicAttackHit', _skillCtx);
+          } else {
+            triggerBloodlineMechanics(pet, 'onPhysicalAttackHit', _skillCtx);
+          }
+          if (_skillFirstAtk) {
+            triggerBloodlineMechanics(pet, 'onFirstAttack', _skillCtx);
+          }
+        }
         // 需求1：怪物被动 reflectPct 反震（报复/反击/反震）
         if (tgtMPassives.reflectPct && dmg > 0) {
           var reflectDmgS = Math.floor(dmg * tgtMPassives.reflectPct);
@@ -1183,6 +1255,12 @@ function executeActiveSkill(pet, skill) {
         statusApplied = true;
       }
       if (statusApplied) statusHitCount++;
+      // ===== 血统机制：状态施加触发 =====
+      if (statusApplied && typeof triggerBloodlineMechanics === 'function') {
+        triggerBloodlineMechanics(pet, 'onStatusApply', {
+          target: tgtMonster, targetIdx: idx, statusType: 'skill'
+        });
+      }
     });
 
     // 需求17：嘲讽类技能 - 施加嘲讽状态（强制目标攻击施法者）
@@ -1316,11 +1394,22 @@ function executeActiveSkill(pet, skill) {
     targetIndices.forEach(function(idx) {
       if (liveBattle.monsterHpArray[idx] <= 0) {
         liveBattle.monsterHpArray[idx] = 0;
+        // ===== 血统机制：击杀触发 =====
+        if (typeof triggerBloodlineMechanics === 'function') {
+          triggerBloodlineMechanics(pet, 'onKill', {
+            target: liveBattle.monsters[idx], targetIdx: idx,
+            lastKillDmg: totalDamage
+          });
+        }
         logMonsterKill(idx);
         if (currentScreen === 'main') animateMonsterDeath(idx);
       }
     });
   } else if (category === 'single_heal' || category === 'aoe_heal') {
+    // ===== 血统机制：治疗技能释放触发 =====
+    if (typeof triggerBloodlineMechanics === 'function') {
+      triggerBloodlineMechanics(pet, 'onHealCast', { skill: skill });
+    }
     // 治疗量受灵力影响：基础百分比 + 灵力加成
     var spirit = getPetSpiritPower(pet, stats, passives, auras, buffs);
     // 血统治疗效果加成（月光狐、圣光天使等）
@@ -1482,6 +1571,13 @@ function executeActiveSkill(pet, skill) {
         // 需求9：法术连击击杀时也将HP归零
         if (liveBattle.monsterHpArray[idx] <= 0) {
           liveBattle.monsterHpArray[idx] = 0;
+          // ===== 血统机制：法连击杀触发 =====
+          if (typeof triggerBloodlineMechanics === 'function') {
+            triggerBloodlineMechanics(pet, 'onKill', {
+              target: liveBattle.monsters[idx], targetIdx: idx,
+              lastKillDmg: fDmg
+            });
+          }
           logMonsterKill(idx);
           if (currentScreen === 'main') animateMonsterDeath(idx);
         }
@@ -1865,6 +1961,12 @@ function executeMonsterAction(monsterIdx) {
       addBattleLog('skill', `⚡ ${getPetDisplayName(targetPet)} 闪避反击对 ${monster.name} 造成 ${counterDmg} 伤害`);
     }
     if (currentScreen === 'main') animateDodge(targetPet);
+    // ===== 血统机制：闪避触发 =====
+    if (typeof triggerBloodlineMechanics === 'function') {
+      triggerBloodlineMechanics(targetPet, 'onDodge', {
+        attacker: monster, monsterIdx: monsterIdx
+      });
+    }
   } else {
     let defBonus = 0;
     if (passives.defBonus) defBonus += passives.defBonus;
@@ -1922,6 +2024,16 @@ function executeMonsterAction(monsterIdx) {
     liveBattle.logs.unshift({ type: 'damage', msg: `👹 ${monster.name} 普攻 ${getPetDisplayName(targetPet)} 造成 ${monsterDmg} 点伤害` });
     addBattleLog('damage', `👹 ${monster.name} 普攻 ${getPetDisplayName(targetPet)} 造成 ${monsterDmg} 点伤害`);
 
+    // ===== 血统机制：受击触发 =====
+    if (typeof triggerBloodlineMechanics === 'function' && monsterDmg > 0) {
+      var _hitCtx = {
+        attacker: monster, monsterIdx: monsterIdx,
+        damage: monsterDmg, target: targetPet
+      };
+      triggerBloodlineMechanics(targetPet, 'onHit', _hitCtx);
+      triggerBloodlineMechanics(targetPet, 'onPhysicalHit', _hitCtx);
+    }
+
     // 需求1：怪物吸血被动（vampire）
     if (mPassives2.vampPct && monsterDmg > 0) {
       var mHeal2 = Math.floor(monsterDmg * mPassives2.vampPct);
@@ -1966,6 +2078,20 @@ function executeMonsterAction(monsterIdx) {
     }
 
     if (liveBattle.petHp[targetPet.id].current <= 0) {
+      // ===== 血统机制：致命伤害触发（在死亡判定前） =====
+      if (typeof triggerBloodlineMechanics === 'function') {
+        triggerBloodlineMechanics(targetPet, 'onFatalDamage', {
+          attacker: monster, monsterIdx: monsterIdx,
+          damage: monsterDmg
+        });
+        // 检查血统是否救了命（setHp 等）
+        if (liveBattle.petHp[targetPet.id].current > 0) {
+          // 被血统技能救活，跳过死亡判定
+          if (currentScreen === 'main') animateMonsterAttackAnim(targetPet, 0, monsterIdx);
+          setTimeout(() => nextFromQueue(), 400);
+          return;
+        }
+      }
       let revived = false;
       if (passives.reviveChance && Math.random() < passives.reviveChance) {
         liveBattle.petHp[targetPet.id].current = Math.floor(liveBattle.petHp[targetPet.id].max * passives.revivePct);
@@ -1983,6 +2109,21 @@ function executeMonsterAction(monsterIdx) {
       }
       if (!revived) {
         addBattleLog('info', `💔 ${getPetDisplayName(targetPet)} 阵亡了！`);
+        // ===== 血统机制：死亡触发 =====
+        if (typeof triggerBloodlineMechanics === 'function') {
+          triggerBloodlineMechanics(targetPet, 'onDeath', {
+            killer: monster, monsterIdx: monsterIdx
+          });
+          // 触发其他存活宠物的 onAllyDeath
+          liveBattle.team.forEach(function(ally) {
+            if (ally.id === targetPet.id) return;
+            var allyHp = liveBattle.petHp[ally.id];
+            if (!allyHp || allyHp.current <= 0) return;
+            triggerBloodlineMechanics(ally, 'onAllyDeath', {
+              deadAlly: targetPet, killer: monster, monsterIdx: monsterIdx
+            });
+          });
+        }
       }
     }
     if (currentScreen === 'main') animateMonsterAttackAnim(targetPet, monsterDmg, monsterIdx);
@@ -2051,6 +2192,12 @@ function applyTurnRegen() {
       hp.current = Math.max(0, hp.current - burnDmg);
       status.burning--;
       if (burnDmg > 0) addBattleLog('info', `🔥 ${getPetDisplayName(pet)} 燃烧损失 ${burnDmg} 气血`);
+    }
+    // ===== 血统机制：状态跳转触发 =====
+    if (typeof triggerBloodlineMechanics === 'function') {
+      if (status && (status.poisoned > 0 || status.burning > 0)) {
+        triggerBloodlineMechanics(pet, 'onStatusTick', { status: status });
+      }
     }
     if (buffs) {
       Object.keys(buffs.buffTurns || {}).forEach(k => {
@@ -2128,6 +2275,14 @@ function applyTurnRegen() {
       if (ms.tauntTurns <= 0) ms.tauntedBy = null;
     }
   }
+  // ===== 血统机制：回合结束触发 =====
+  if (typeof triggerBloodlineMechanics === 'function') {
+    liveBattle.team.forEach(function(pet) {
+      var hp = liveBattle.petHp[pet.id];
+      if (!hp || hp.current <= 0) return;
+      triggerBloodlineMechanics(pet, 'onTurnEnd', { round: liveBattle.round });
+    });
+  }
 }
 
 function processBattleDefeat() {
@@ -2139,11 +2294,12 @@ function processBattleDefeat() {
     addBattleLog('info', '门票已消耗，副本挑战失败...');
   }
   G.statistics.totalBattles++;
-  updateAchievement('battle', 1);
-  saveGame();
-  liveBattle = null;
-  if (currentScreen === 'main') render();
-  if (autoBattleInterval) {
+updateAchievement('battle', 1);
+saveGame();
+if (typeof cleanupBloodlineRT === 'function') cleanupBloodlineRT();
+liveBattle = null;
+if (currentScreen === 'main') render();
+if (autoBattleInterval) {
     battleSpawnTimer = setTimeout(() => {
       spawnMonster();
       if (currentScreen === 'main') render();
@@ -2517,8 +2673,11 @@ function openChestDirect(chest) {
       const egg = generateEgg(c.tier);
       G.eggs.push(egg);
       addBattleLog('loot', `🥚 获得 T${c.tier+1} 宠物蛋`);
-      // 需求7：双倍宠物蛋掉落buff（egg_drop_mult > 1 时额外掉落）
-      var eggDropMult = (typeof getBuffMult === 'function') ? getBuffMult('egg_drop_mult') : 1;
+// 需求7：双倍宠物蛋掉落buff（egg_drop_mult > 1 时额外掉落）
+var eggDropMult = (typeof getBuffMult === 'function') ? getBuffMult('egg_drop_mult') : 1;
+// 需求15：时间系统蛋掉落加成
+var timeEggEff = (typeof getTimePhaseEffects === 'function') ? getTimePhaseEffects() : {};
+if (timeEggEff.eggDropMult) eggDropMult *= timeEggEff.eggDropMult;
       for (var ei = 1; ei < eggDropMult; ei++) {
         var extraEgg = generateEgg(c.tier);
         G.eggs.push(extraEgg);
@@ -2584,6 +2743,8 @@ function stopLiveBattle() {
   clearTimeout(battleTurnTimer);
   clearTimeout(battleSpawnTimer);
   clearTimeout(walkTimer);
+  // ===== 清理血统运行时数据 =====
+  if (typeof cleanupBloodlineRT === 'function') cleanupBloodlineRT();
   liveBattle = null;
   walkPhase = null;
   battleTurnTimer = null;

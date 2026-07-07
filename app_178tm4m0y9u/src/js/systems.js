@@ -44,6 +44,9 @@ function updateAchievement(id, amount) {
 // 统一的金币增加函数，自动记录成就
 function addGold(amount) {
   var mult = getBuffMult('gold_mult') * (1 + getTalentBonus('gold_bonus') + getTalentBonus('gold_mastery') + getTalentBonus('growth_mastery') + getTalentBonus('loot_mastery'));
+  // 需求15：时间系统金币加成
+  var timeEff = (typeof getTimePhaseEffects === 'function') ? getTimePhaseEffects() : {};
+  if (timeEff.goldMult) mult *= timeEff.goldMult;
   var gain = Math.floor(amount * mult);
   G.player.gold += gain;
   updateAchievement('gold_earn', gain);
@@ -290,6 +293,9 @@ function getExpForLevel(lv) {
 function addExp(amount) {
   var growthMastery = getTalentBonus('growth_mastery');
   var mult = getBuffMult('exp_mult') * (1 + getTalentBonus('exp_bonus') + getTalentBonus('exp_mastery') + growthMastery);
+  // 需求15：时间系统经验加成
+  var timeEff = (typeof getTimePhaseEffects === 'function') ? getTimePhaseEffects() : {};
+  if (timeEff.expMult) mult *= timeEff.expMult;
   var gain = Math.floor(amount * mult);
   G.player.exp += gain;
   while (G.player.exp >= G.player.expToNext && G.player.level < G.player.maxLevel) {
@@ -439,3 +445,92 @@ function renderAchievementScreen() {
   </div>`;
 }
 
+// ==================== 游戏内时间系统（需求15）====================
+// 参考《梦幻西游》时辰切换机制：白天→黄昏→夜晚循环
+// 每个阶段持续5分钟（实时），循环往复
+// 不同时间段有不同的游戏效果加成
+
+const TIME_PHASES = [
+  {
+    id: 'day', name: '白天', icon: '☀️', color: '#fbbf24',
+    duration: 300000, // 5分钟
+    desc: '阳光普照，精力充沛',
+    effects: { expMult: 1.10, goldMult: 1.10, eggDropMult: 1.0 },
+  },
+  {
+    id: 'dusk', name: '黄昏', icon: '🌅', color: '#f97316',
+    duration: 300000, // 5分钟
+    desc: '夕阳西下，奇遇渐多',
+    effects: { expMult: 1.0, goldMult: 1.0, eggDropMult: 1.15, itemDropMult: 1.10 },
+  },
+  {
+    id: 'night', name: '夜晚', icon: '🌙', color: '#6366f1',
+    duration: 300000, // 5分钟
+    desc: '夜幕降临，怪物强化但掉落更丰',
+    effects: { expMult: 1.20, goldMult: 1.0, eggDropMult: 1.0, monsterAtkMult: 1.15 },
+  },
+];
+
+// 获取当前时间阶段配置
+function getCurrentTimePhase() {
+  if (!G.gameTime) G.gameTime = { phase: 'day', phaseStartTime: Date.now(), cycleCount: 0 };
+  var phase = TIME_PHASES.find(function(p) { return p.id === G.gameTime.phase; });
+  return phase || TIME_PHASES[0];
+}
+
+// 更新游戏时间（检查是否需要切换阶段）
+function updateGameTime() {
+  if (!G.gameTime) {
+    G.gameTime = { phase: 'day', phaseStartTime: Date.now(), cycleCount: 0 };
+    return;
+  }
+  var now = Date.now();
+  var currentPhase = getCurrentTimePhase();
+  var elapsed = now - (G.gameTime.phaseStartTime || now);
+  if (elapsed >= currentPhase.duration) {
+    // 切换到下一个阶段
+    var currentIdx = TIME_PHASES.findIndex(function(p) { return p.id === G.gameTime.phase; });
+    var nextIdx = (currentIdx + 1) % TIME_PHASES.length;
+    G.gameTime.phase = TIME_PHASES[nextIdx].id;
+    G.gameTime.phaseStartTime = now;
+    if (nextIdx === 0) G.gameTime.cycleCount = (G.gameTime.cycleCount || 0) + 1;
+    // 通知阶段切换
+    var newPhase = TIME_PHASES[nextIdx];
+    if (typeof addBattleLog === 'function') {
+      addBattleLog('info', newPhase.icon + ' 时辰更替：' + newPhase.name + ' — ' + newPhase.desc);
+    }
+    if (typeof showToast === 'function') {
+      showToast(newPhase.icon + ' 时辰更替：' + newPhase.name, 'info');
+    }
+    saveGame();
+  }
+}
+
+// 获取当前时间阶段的效果加成
+function getTimePhaseEffects() {
+  var phase = getCurrentTimePhase();
+  return phase.effects || {};
+}
+
+// 获取当前时间阶段的剩余时间（毫秒）
+function getTimePhaseRemaining() {
+  if (!G.gameTime || !G.gameTime.phaseStartTime) return 0;
+  var phase = getCurrentTimePhase();
+  var elapsed = Date.now() - G.gameTime.phaseStartTime;
+  return Math.max(0, phase.duration - elapsed);
+}
+
+// 获取时间阶段的剩余时间文本
+function getTimePhaseRemainingText() {
+  var remaining = getTimePhaseRemaining();
+  var min = Math.floor(remaining / 60000);
+  var sec = Math.floor((remaining % 60000) / 1000);
+  return min + '分' + sec + '秒';
+}
+
+// 获取下一个时间阶段
+function getNextTimePhase() {
+  var currentIdx = TIME_PHASES.findIndex(function(p) { return p.id === (G.gameTime ? G.gameTime.phase : 'day'); });
+  var nextIdx = (currentIdx + 1) % TIME_PHASES.length;
+  return TIME_PHASES[nextIdx];
+}

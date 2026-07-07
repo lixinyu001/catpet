@@ -506,10 +506,22 @@ input:focus, select:focus { border-color: var(--purple); }
 }
 
 /* ===== Buff显示栏（页面顶部中间） ===== */
+#timeBar {
+position: fixed; top: 8px; left: 12px; z-index: 900;
+pointer-events: none;
+}
+.time-bar-chip {
+display: flex; align-items: center; gap: 4px;
+background: rgba(18,18,42,0.92);
+border-radius: 999px; padding: 2px 10px;
+font-size: 11px;
+box-shadow: 0 2px 8px rgba(99,102,241,0.3);
+pointer-events: auto;
+}
 #buffBar {
-  position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 900;
-  display: flex; flex-direction: row; gap: 6px;
-  pointer-events: none; max-width: 90vw;
+position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 900;
+display: flex; flex-direction: row; gap: 6px;
+pointer-events: none; max-width: 60vw;
 }
 .buff-chip {
   display: flex; align-items: center; gap: 4px;
@@ -621,6 +633,7 @@ input:focus, select:focus { border-color: var(--purple); }
 <body class="min-h-screen">
 
 <div id="app"></div>
+<div id="timeBar"></div>
 <div id="buffBar"></div>
 <div id="toast-container"></div>
 
@@ -668,6 +681,7 @@ window.addEventListener('error', function(e) {
 <script src="js/systems.js"></script>
 <script src="js/state.js"></script>
 <script src="js/pet.js"></script>
+<script src="js/bloodline_engine.js"></script>
 <script src="js/battle.js"></script>
 <script src="js/economy.js"></script>
 <script src="js/ui.js"></script>
