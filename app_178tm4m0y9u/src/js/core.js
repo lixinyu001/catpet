@@ -534,10 +534,8 @@ var ConfigCache = (function() {
     if (typeof ACHIEVEMENT_DEFS !== 'undefined' && Array.isArray(ACHIEVEMENT_DEFS)) {
       register('achievements', ACHIEVEMENT_DEFS, ['id']);
     }
-    // 血统技能索引
-    if (typeof BLOODLINE_SKILLS !== 'undefined' && Array.isArray(BLOODLINE_SKILLS)) {
-      register('bloodlines', BLOODLINE_SKILLS, ['id', 'race']);
-    }
+    // 血统重构：BLOODLINE_SKILLS 已废弃，血统配置统一使用 PET_BLOOD_ALL
+    // 不再注册种族通用血统索引
     _loaded = true;
     Logger.info('[ConfigCache]', '配置索引初始化完成');
   }

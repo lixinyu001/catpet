@@ -136,28 +136,29 @@ function generatePetBase(forcedName, qualityBoost) {
     // 抽蛋池品质加成：qualityScore 统一提高
     if (qualityBoost) qualityScore = Math.min(1, qualityScore * (1 + qualityBoost));
 
-    // 品质分布：普通40% / 优秀25% / 稀有20% / 史诗10% / 传说4% / 神话1%
-    if (qualityScore < 0.40) rarity = 'common';
-    else if (qualityScore < 0.65) rarity = 'uncommon';
-    else if (qualityScore < 0.85) rarity = 'rare';
-    else if (qualityScore < 0.95) rarity = 'epic';
-    else if (qualityScore < 0.99) rarity = 'legendary';
+    // 品质分布（移除普通）：优秀35% / 稀有30% / 史诗20% / 传说10% / 神话5%
+    if (qualityScore < 0.35) rarity = 'uncommon';
+    else if (qualityScore < 0.65) rarity = 'rare';
+    else if (qualityScore < 0.85) rarity = 'epic';
+    else if (qualityScore < 0.95) rarity = 'legendary';
     else rarity = 'mythic';
   }
 
-  const bloodline = BLOODLINE_SKILLS.find(b => b.race === race);
+  // 血统重构：pet.bloodline 不再在创建时设置，运行时通过 getPetBloodlineSkill(pet) 从 PET_BLOOD_ALL 动态查询
+  const bloodline = null;
 
   // 技能生成——使用公共函数 generateInnateSkills（消除重复代码）
   var maxSkills = getPetMaxSkills(name);
   var innateSkills = generateInnateSkills(name, maxSkills);
 
-  // 进阶系统已移除，保留 advanceStage/advanceable 字段用于兼容
+  // 新进阶系统：根据图鉴 evolvable 标志设置 advanceable
   return {
     name: name,
     race, rarity, growth, aptitude, bloodline,
     innateSkills, learnedSkills: [], level: 1, moonDewUsed: 0,
     petEquipment: { attack: null, hp: null, defense: null },
-    advanceStage: 0, advanceable: false, // 进阶系统已移除
+    advanceStage: 0, advanceable: !!(dex.evolvable), advanceValue: 0, // 新进阶系统
+    lifespan: randomInt(10000, 15000), // 初始寿命：10000~15000
     id: 'pet_' + Date.now() + '_' + randomInt(1000, 9999),
   };
 }
@@ -167,9 +168,11 @@ function generatePetBase(forcedName, qualityBoost) {
 // 注意：异化(special)仅在生成时1.5%概率判定，recalcRarity不自动判定异化
 // 成长/资质超过图鉴上限时按满分1.0计算（月华露培养的宠物可达到更高品质）
 function recalcRarity(pet, qualityBoost) {
-  if (!pet || !pet.name) return pet ? pet.rarity : 'common';
+  if (!pet || !pet.name) return pet ? pet.rarity : 'uncommon';
   // 异化品质保持不变（生成时已固定）
   if (pet.rarity === 'special') return 'special';
+  // 神兽品质固定为神话，不参与重算（修复品质衰减BUG）
+  if (pet.isDivineBeast) return 'mythic';
   var dex = getPetDex(pet.name);
   var gMin = dex.growthRange[0], gMax = dex.growthRange[1];
   var growth = pet.growth || gMin;
@@ -188,11 +191,10 @@ function recalcRarity(pet, qualityBoost) {
   var aptScore = aptScoreCount > 0 ? aptScoreSum / aptScoreCount : 0.5;
   var qualityScore = gScore * 0.45 + aptScore * 0.55;
   if (qualityBoost) qualityScore = Math.min(1, qualityScore * (1 + qualityBoost));
-  // 需求11：宠物品质判断调整 - 史诗0.85-0.9，传说0.9-0.95，神话0.95以上
-  if (qualityScore < 0.40) return 'common';
-  if (qualityScore < 0.65) return 'uncommon';
-  if (qualityScore < 0.85) return 'rare';
-  if (qualityScore < 0.90) return 'epic';
+  // 品质判断（移除普通）：优秀0~0.35，稀有0.35~0.65，史诗0.65~0.85，传说0.85~0.95，神话0.95以上
+  if (qualityScore < 0.35) return 'uncommon';
+  if (qualityScore < 0.65) return 'rare';
+  if (qualityScore < 0.85) return 'epic';
   if (qualityScore < 0.95) return 'legendary';
   return 'mythic';
 }
@@ -966,12 +968,14 @@ function fusePets(pet1, pet2) {
     rarity: basePet.rarity,
     growth: 0,
     aptitude: {},
-    bloodline: basePet.bloodline || BLOODLINE_SKILLS.find(b => b.race === basePet.race),
+    bloodline: null, // 血统重构：运行时通过 getPetBloodlineSkill 动态查询
     innateSkills: [],
     learnedSkills: [],
     level: 1,
     moonDewUsed: 0,
     petEquipment: { attack: null, hp: null, defense: null },
+    advanceStage: 0, advanceable: false, advanceValue: 0, // 融合宠物不可进阶
+    lifespan: randomInt(10000, 15000), // 初始寿命：10000~15000
     id: 'pet_' + Date.now() + '_' + randomInt(1000, 9999),
   };
 
@@ -1055,12 +1059,13 @@ function generateFusionOnlyPet(pet1, pet2) {
     rarity: 'special', // 融合限定宠物固定为异化品质
     growth: 0,
     aptitude: {},
-    bloodline: BLOODLINE_SKILLS.find(b => b.race === dex.race),
+    bloodline: null, // 血统重构：运行时通过 getPetBloodlineSkill 动态查询
     innateSkills: [],
     learnedSkills: [],
     level: 1,
     moonDewUsed: 0,
     petEquipment: { attack: null, hp: null, defense: null },
+    lifespan: randomInt(10000, 15000), // 初始寿命：10000~15000
     id: 'pet_' + Date.now() + '_' + randomInt(1000, 9999),
   };
   // 资质：取两只宠物较高值 × 1.2，再在图鉴范围内取较高值
@@ -1088,14 +1093,8 @@ function generateDivineBeast() {
   var name = pickRandom(DIVINE_BEASTS);
   var dex = getPetDex(name);
   var race = dex.race;
-  // 神兽血统
+  // 血统重构：神兽血统同样通过 getPetBloodlineSkill 从 PET_BLOOD_ALL 动态查询
   var bloodline = null;
-  if (typeof DIVINE_BEAST_BLOODLINES !== 'undefined' && DIVINE_BEAST_BLOODLINES[name]) {
-    bloodline = BLOODLINE_SKILLS.find(function(b) { return b.id === DIVINE_BEAST_BLOODLINES[name]; });
-  }
-  if (!bloodline) {
-    bloodline = BLOODLINE_SKILLS.find(function(b) { return b.race === race; });
-  }
   // 固定属性：3.0成长，3000全资质
   var aptitude = {};
   APTITUDE_KEYS.forEach(function(k) {
@@ -1113,11 +1112,12 @@ function generateDivineBeast() {
     bloodline: bloodline,
     innateSkills: innateSkills,
     learnedSkills: [],
-    level: 1,
+    level: G.player.level || 1, // 神兽等级同步玩家等级
     moonDewUsed: 0,
     petEquipment: { attack: null, hp: null, defense: null },
-    advanceStage: 0, advanceable: false, // 进阶系统已移除
+    advanceStage: 0, advanceable: false, advanceValue: 0, // 神兽不可进阶
     isDivineBeast: true,  // 神兽标记
+    lifespan: 99999, // 神兽寿命无限（设为极大值）
     id: 'pet_' + Date.now() + '_' + randomInt(1000, 9999),
   };
   return { result: newPet, isDivineBeast: true };
@@ -1158,5 +1158,220 @@ function resetPet(petId) {
   // 重生刷新品质：根据新的成长/资质重新计算
   pet.rarity = recalcRarity(pet);
   return { ok: true, pet: pet };
+}
+
+// ==================== 新进阶系统（进化晶石） ====================
+
+/**
+ * 进化晶石暴击计算
+ * 使用进化晶石时有低概率触发暴击，暴击倍率为 2~9 倍
+ * @param {string} itemTier - 道具品质: 'low' / 'mid' / 'high'
+ * @returns {{ value: number, crit: boolean, critMult: number }} 进阶值增量及暴击信息
+ */
+function calculateEvolutionCrystalValue(itemTier) {
+  var config = EVOLVE_SYSTEM_CONFIG.ITEMS[itemTier];
+  if (!config) return { value: 0, crit: false, critMult: 1 };
+  var baseValue = config.baseValue;
+  var crit = Math.random() < config.critChance;
+  var critMult = 1;
+  if (crit) {
+    critMult = randomInt(EVOLVE_SYSTEM_CONFIG.CRIT_MIN, EVOLVE_SYSTEM_CONFIG.CRIT_MAX);
+  }
+  return {
+    value: baseValue * critMult,
+    crit: crit,
+    critMult: critMult,
+  };
+}
+
+/**
+ * 执行宠物进阶（当 advanceValue 达到上限时调用）
+ * 进阶效果：
+ * 1. 宠物名变更为进阶链中下一阶段名
+ * 2. 成长和资质在原基础上 ×1.3
+ * 3. advanceStage +1
+ * 4. 按目标 T 级解锁技能格（T5=6格）
+ * 5. advanceValue 清零
+ * 6. 更新 advanceable（是否还能继续进阶）
+ * @param {string} petId - 宠物ID
+ * @returns {{ ok: boolean, msg: string, pet?: object }}
+ */
+function advancePetEvolve(petId) {
+  var pet = G.pets.find(function(p) { return p.id === petId; });
+  if (!pet) return { ok: false, msg: '宠物不存在' };
+  var evolveInfo = getPetEvolveInfo(pet);
+  if (!evolveInfo.canEvolve) {
+    if (evolveInfo.maxed) return { ok: false, msg: '该宠物已达到最高进阶形态' };
+    return { ok: false, msg: '该宠物不可进阶' };
+  }
+  // 检查进阶值是否达到上限
+  if ((pet.advanceValue || 0) < evolveInfo.advanceValueMax) {
+    return { ok: false, msg: '进阶值不足，需 ' + evolveInfo.advanceValueMax + ' 点' };
+  }
+
+  // 执行进阶
+  var oldName = pet.name;
+  var newName = evolveInfo.nextName;
+  var newStage = (pet.advanceStage || 0) + 1;
+  var newDex = getPetDex(newName);
+
+  // 更新宠物名和进阶阶段
+  pet.name = newName;
+  pet.advanceStage = newStage;
+
+  // 成长和资质在原基础上 ×1.3
+  var aptMult = EVOLVE_SYSTEM_CONFIG.ADVANCE_APTITUDE_MULT;
+  var gMult = EVOLVE_SYSTEM_CONFIG.ADVANCE_GROWTH_MULT;
+  APTITUDE_KEYS.forEach(function(k) {
+    if (pet.aptitude && pet.aptitude[k]) {
+      pet.aptitude[k] = Math.floor(pet.aptitude[k] * aptMult);
+    }
+  });
+  if (pet.growth) {
+    pet.growth = Math.round(pet.growth * gMult * 100) / 100;
+  }
+
+  // 按目标 T 级解锁技能格：更新天生技能
+  if (newDex && newDex.innateSkills) {
+    var maxSkills = getPetMaxSkills(newName);
+    var existingSkillIds = {};
+    if (pet.innateSkills) {
+      pet.innateSkills.forEach(function(s) { existingSkillIds[s.id || s] = true; });
+    }
+    newDex.innateSkills.forEach(function(s) {
+      var sid = typeof s === 'string' ? s : (s.id || s);
+      if (!existingSkillIds[sid] && pet.innateSkills.length < maxSkills) {
+        pet.innateSkills.push(s);
+        existingSkillIds[sid] = true;
+      }
+    });
+  }
+
+  // 进阶值清零
+  pet.advanceValue = 0;
+
+  // 更新 advanceable：检查是否还能继续进阶
+  var newEvolveInfo = getPetEvolveInfo(pet);
+  pet.advanceable = newEvolveInfo.canEvolve;
+
+  // 重新计算品质
+  pet.rarity = recalcRarity(pet);
+
+  return {
+    ok: true,
+    msg: oldName + ' 进阶成功！变为 ' + newName,
+    pet: pet,
+  };
+}
+
+// ==================== 宠物寿命系统 ====================
+
+/**
+ * 消耗宠物寿命（主线战斗每10次扣1，副本/活动每次扣1，阵亡每次扣50）
+ * @param {string} battleType - 'main' | 'dungeon' | 'activity' | 'death'
+ * @param {Array} teamPetIds - 参战的宠物ID数组（death模式时只需传单个宠物ID）
+ * @returns {Array} 寿命耗尽的宠物ID列表
+ */
+function consumePetLifespan(battleType, teamPetIds) {
+  var expiredPets = [];
+  if (!teamPetIds || teamPetIds.length === 0) return expiredPets;
+
+  if (battleType === 'death') {
+    // 宠物阵亡：扣除50点寿命
+    var pet = G.pets.find(function(p) { return p.id === teamPetIds; });
+    if (pet && pet.lifespan !== undefined && pet.lifespan < 99999) {
+      pet.lifespan = Math.max(0, pet.lifespan - 50);
+      if (pet.lifespan <= 0) expiredPets.push(pet.id);
+    }
+    return expiredPets;
+  }
+
+  if (battleType === 'main') {
+    // 主线战斗：每10次扣除1点
+    if (!G.player.mainBattleLifespanCounter) G.player.mainBattleLifespanCounter = 0;
+    G.player.mainBattleLifespanCounter++;
+    if (G.player.mainBattleLifespanCounter < 10) return expiredPets;
+    // 达到10次，扣除1点并重置计数器
+    G.player.mainBattleLifespanCounter = 0;
+    teamPetIds.forEach(function(pid) {
+      var p = G.pets.find(function(pet) { return pet.id === pid; });
+      if (p && p.lifespan !== undefined && p.lifespan < 99999) {
+        p.lifespan = Math.max(0, p.lifespan - 1);
+        if (p.lifespan <= 0) expiredPets.push(p.id);
+      }
+    });
+  } else if (battleType === 'dungeon' || battleType === 'activity') {
+    // 副本/活动：每次扣除1点
+    teamPetIds.forEach(function(pid) {
+      var p = G.pets.find(function(pet) { return pet.id === pid; });
+      if (p && p.lifespan !== undefined && p.lifespan < 99999) {
+        p.lifespan = Math.max(0, p.lifespan - 1);
+        if (p.lifespan <= 0) expiredPets.push(p.id);
+      }
+    });
+  }
+  return expiredPets;
+}
+
+/**
+ * 使用延寿道具
+ * @param {string} itemId - 道具ID（lifespan_low / lifespan_mid / lifespan_high）
+ * @param {string} petId - 目标宠物ID
+ * @returns {{ ok: boolean, msg: string, sideEffect?: string }}
+ */
+function useLifespanItem(itemId, petId) {
+  var amounts = { lifespan_low: 500, lifespan_mid: 1000, lifespan_high: 2000 };
+  var amount = amounts[itemId];
+  if (!amount) return { ok: false, msg: '无效的延寿道具' };
+
+  var inv = G.inventory.find(function(i) { return i.id === itemId; });
+  if (!inv || inv.count <= 0) return { ok: false, msg: '道具不足' };
+
+  var pet = G.pets.find(function(p) { return p.id === petId; });
+  if (!pet) return { ok: false, msg: '宠物不存在' };
+  if (pet.lifespan === undefined) pet.lifespan = 10000;
+  // 神兽寿命无限，不允许使用延寿道具
+  if (pet.lifespan >= 99999) return { ok: false, msg: '神兽寿命无限，无需延寿' };
+
+  // 消耗道具
+  inv.count--;
+  if (inv.count <= 0) G.inventory = G.inventory.filter(function(i) { return i.id !== itemId; });
+
+  // 增加寿命
+  pet.lifespan += amount;
+
+  // 10%概率触发副作用：随机降低某项资质或成长
+  var sideEffectMsg = '';
+  if (Math.random() < 0.10) {
+    var dex = getPetDex(pet.name);
+    // 50%概率降低资质，50%概率降低成长
+    if (Math.random() < 0.5 && pet.aptitude) {
+      // 随机降低一项资质（降低5%~10%）
+      var aptKeys = APTITUDE_KEYS.slice();
+      var randKey = aptKeys[randomInt(0, aptKeys.length - 1)];
+      var curVal = pet.aptitude[randKey] || 1500;
+      var reducePct = randomFloat(0.05, 0.10);
+      var newVal = Math.max(800, Math.floor(curVal * (1 - reducePct)));
+      var actualReduce = curVal - newVal;
+      pet.aptitude[randKey] = newVal;
+      sideEffectMsg = '⚠️ 副作用触发！' + randKey + ' 降低 ' + actualReduce + ' 点';
+    } else {
+      // 降低成长（降低5%~10%）
+      var curGrowth = pet.growth || 1.0;
+      var gReducePct = randomFloat(0.05, 0.10);
+      var newGrowth = Math.max(0.5, Math.round(curGrowth * (1 - gReducePct) * 100) / 100);
+      var actualGReduce = Math.round((curGrowth - newGrowth) * 100) / 100;
+      pet.growth = newGrowth;
+      sideEffectMsg = '⚠️ 副作用触发！成长降低 ' + actualGReduce;
+    }
+    // 重新计算品质
+    pet.rarity = recalcRarity(pet);
+  }
+
+  return {
+    ok: true,
+    msg: '寿命 +' + amount + '，当前寿命：' + pet.lifespan,
+    sideEffect: sideEffectMsg,
+  };
 }
 

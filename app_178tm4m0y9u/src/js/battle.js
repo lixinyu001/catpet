@@ -2,14 +2,23 @@
 
 // ==================== VISUAL BATTLE SYSTEM ====================
 
+// 寿命系统：标记宠物在本场战斗中阵亡（去重）
+function markPetDiedInBattle(petId) {
+  if (!liveBattle || !petId) return;
+  if (!liveBattle.petsDiedThisBattle) liveBattle.petsDiedThisBattle = [];
+  if (liveBattle.petsDiedThisBattle.indexOf(petId) < 0) {
+    liveBattle.petsDiedThisBattle.push(petId);
+  }
+}
+
 function getTeamPets() {
   return G.player.activeTeam.map(id => G.pets.find(p => p.id === id)).filter(Boolean);
 }
 
 function getPlayerCombatPower() {
-  const team = getTeamPets();
-  if (team.length === 0) return G.player.level * 10;
-  return team.reduce((sum, p) => sum + getPetCombatPower(p), 0) * (1 + G.player.rebirth * 0.15);
+const team = getTeamPets();
+if (team.length === 0) return G.player.level * 10;
+return team.reduce((sum, p) => sum + getPetCombatPower(p), 0);
 }
 
 function getMapProgress() {
@@ -199,7 +208,10 @@ function spawnMonster() {
 function spawnMonsterDirect() {
   const isSpecialBattle = liveBattle && (liveBattle.isDungeon || liveBattle.isTreasure || liveBattle.isArena);
   let monsters;
-  if (liveBattle && (liveBattle.isDungeon || liveBattle.isTreasure)) {
+  // 进化森林战斗：使用 G.battleContext 中预生成的怪物
+  if (G.battleContext && G.battleContext.type === 'evolution_forest' && G.battleContext.monster) {
+    monsters = [G.battleContext.monster];
+  } else if (liveBattle && (liveBattle.isDungeon || liveBattle.isTreasure)) {
     // 副本/藏宝图：单怪
     monsters = [getLayerMonster(G.player.currentMap)];
   } else {
@@ -266,8 +278,12 @@ function spawnMonsterDirect() {
     dungeonMaxWaves: 0,
     isArena: false,
     isTreasure: false,
+    isEvolutionForest: !!(G.battleContext && G.battleContext.type === 'evolution_forest'),
+    evolutionForestLayer: (G.battleContext && G.battleContext.type === 'evolution_forest') ? G.battleContext.layer : 0,
     treasureMap: null,
     activeAuras: {}, // 需求20：已生效的光环技能（key=技能ID，value=true），避免重复释放
+    petsDiedThisBattle: [], // 寿命系统：追踪本场战斗中阵亡过的宠物ID
+    rewardTracker: { gold: 0, exp: 0, items: [] }, // 战斗结算：追踪本场奖励
   };
   if (currentScreen === 'main') renderBattleArena();
   buildTurnQueue();
@@ -314,7 +330,10 @@ function advanceWaveOrEndBattle() {
     return;
   }
   // 所有怪物都死了，给奖励（已死亡的怪物逐个给，去重）
-  liveBattle.monsters.forEach(function(m) { giveMonsterKillRewards(m); });
+  // 进化森林战斗跳过标准奖励（由 settleEvolutionForest 统一发放）
+  if (!liveBattle.isEvolutionForest) {
+    liveBattle.monsters.forEach(function(m) { giveMonsterKillRewards(m); });
+  }
   // 处理关卡进度
   processWaveCleared();
 }
@@ -333,12 +352,21 @@ function giveMonsterKillRewards(monster) {
   const goldGain = Math.floor(monster.level * 5 * (1 + G.player.rebirth * 0.1));
   addGold(goldGain);
   addBattleLog('loot', `🪙 获得 ${goldGain} 金币`);
+  // ===== 奖励追踪（用于战斗结算Modal）=====
+  if (liveBattle && liveBattle.rewardTracker) {
+    liveBattle.rewardTracker.gold += goldGain;
+    liveBattle.rewardTracker.exp += actualExpGain;
+  }
   const enemyType = monster.enemyType || 'mob';
   // 恢复主线宝箱掉落（需求22）
   const droppedChests = dropChests(enemyType);
   droppedChests.forEach(c => {
     const cr = CHEST_RARITIES.find(r => r.id === c.rarity);
     addBattleLog('loot', `${cr.icon} 掉落了 ${cr.name}！`);
+    // 追踪掉落道具
+    if (liveBattle && liveBattle.rewardTracker) {
+      liveBattle.rewardTracker.items.push({ name: cr.name, icon: cr.icon, count: 1 });
+    }
   });
   if (G.autoOpenChests) {
     droppedChests.forEach(c => openChestDirect(c));
@@ -362,6 +390,40 @@ function giveMonsterKillRewards(monster) {
 // 波次清空后处理关卡进度（原 processBattleRewardsLive 的进度逻辑）
 function processWaveCleared() {
   if (!liveBattle) return;
+  // 进化森林战斗结算
+  if (liveBattle.isEvolutionForest) {
+    var efLayer = liveBattle.evolutionForestLayer;
+    var efResult = settleEvolutionForest(efLayer);
+    if (efResult.ok) {
+      var msg = '🌲 进化森林第' + efLayer + '层挑战成功！';
+      if (efResult.rewards) {
+        if (efResult.rewards.gold) msg += ' 金币+' + efResult.rewards.gold;
+        if (efResult.rewards.exp) msg += ' 经验+' + efResult.rewards.exp;
+        if (efResult.rewards.items && efResult.rewards.items.length > 0) {
+          efResult.rewards.items.forEach(function(it) {
+            msg += ' ' + it.name + '×' + it.count;
+            addBattleLog('loot', '💎 获得 ' + it.name + ' ×' + it.count);
+          });
+        }
+      }
+      addBattleLog('loot', msg);
+      showToast(msg, 'success');
+    }
+    // 清理战斗上下文
+    G.battleContext = null;
+    saveGame();
+    liveBattle = null;
+    if (currentScreen === 'main') render();
+    if (currentScreen === 'activity') render();
+    // 恢复自动挂机
+    if (autoBattleInterval) {
+      battleSpawnTimer = setTimeout(function() {
+        spawnMonster();
+        if (currentScreen === 'main') render();
+      }, 1500);
+    }
+    return;
+  }
   const map = MAPS.find(m => m.id === G.player.currentMap);
   // 副本/藏宝图走原流程
   if (liveBattle.isDungeon) {
@@ -411,10 +473,36 @@ function processWaveCleared() {
   maybeDropTreasureMap();
   // v2.2.0 需求1：在线挂机彩蛋掉落（仅主线战斗，仅在线挂机时）
 if (autoBattleInterval) maybeDropIdleEgg();
+
+  // ===== 寿命系统：主线战斗寿命消耗 =====
+  var teamPetIds = liveBattle.team.map(function(p) { return p.id; });
+  // 阵亡宠物扣除50寿命
+  if (liveBattle.petsDiedThisBattle && liveBattle.petsDiedThisBattle.length > 0) {
+    liveBattle.petsDiedThisBattle.forEach(function(pid) {
+      if (typeof consumePetLifespan === 'function') {
+        consumePetLifespan('death', pid);
+      }
+    });
+  }
+  // 主线战斗每10次扣除1点寿命
+  if (typeof consumePetLifespan === 'function') {
+    consumePetLifespan('main', teamPetIds);
+  }
+
+  // ===== 战斗结算界面：boss击杀时弹出结算Modal =====
+  var bossKilled = (enemyType === 'boss');
+  var battleRewards = liveBattle.rewardTracker || { gold: 0, exp: 0, items: [] };
+
 saveGame();
 if (typeof cleanupBloodlineRT === 'function') cleanupBloodlineRT();
 liveBattle = null;
 if (currentScreen === 'main') render();
+
+  // boss击杀时显示结算Modal
+  if (bossKilled && typeof showBattleSettlementModal === 'function') {
+    showBattleSettlementModal(battleRewards, map);
+  }
+
 if (autoBattleInterval) {
     battleSpawnTimer = setTimeout(() => {
       spawnMonster();
@@ -809,6 +897,38 @@ function executeNormalAttack(pet) {
 
   let atkPower = getPetAtkPower(pet, stats, passives, auras, buffs, bloodline);
 
+  // ===== 血统机制：消费下次攻击修改器（暗影狼背刺等）=====
+  var _blNextAtkMods = null;
+  var _blCurAtkBonus = null;
+  var _blForceCrit = false;
+  if (typeof consumeNextAttackMods === 'function') {
+    _blNextAtkMods = consumeNextAttackMods(pet);
+  }
+  if (typeof consumeCurrentAttackBonuses === 'function') {
+    _blCurAtkBonus = consumeCurrentAttackBonuses(pet);
+  }
+  // 检查上一轮 onAttackHit 血统存储的 forceCrit 标记
+  if (pet._bloodlineForceCrit) {
+    _blForceCrit = true;
+    pet._bloodlineForceCrit = false;
+  }
+  // 应用下次攻击修改器
+  if (_blNextAtkMods) {
+    if (_blNextAtkMods.dmgPct) atkPower = Math.floor(atkPower * (1 + _blNextAtkMods.dmgPct));
+    if (_blNextAtkMods.forceCrit) _blForceCrit = true;
+  }
+  // 应用当前攻击临时加成（dynamicBonus / modifyStat with applyTo=currentAttack）
+  if (_blCurAtkBonus) {
+    if (_blCurAtkBonus.dmgPct) atkPower = Math.floor(atkPower * (1 + _blCurAtkBonus.dmgPct));
+    if (_blCurAtkBonus.atkPct) atkPower = Math.floor(atkPower * (1 + _blCurAtkBonus.atkPct));
+    if (_blCurAtkBonus.magicDmgPct && !isPhysicalSkill({ category: 'single_atk' })) atkPower = Math.floor(atkPower * (1 + _blCurAtkBonus.magicDmgPct));
+  }
+  // 应用永久血统加成（dynamicBonus 无 applyTo）
+  if (pet._permanentBonuses) {
+    if (pet._permanentBonuses.dmgPct) atkPower = Math.floor(atkPower * (1 + pet._permanentBonuses.dmgPct));
+    if (pet._permanentBonuses.atkPct) atkPower = Math.floor(atkPower * (1 + pet._permanentBonuses.atkPct));
+  }
+
   // 需求1：目标怪物被动技能（防御类）
   var tgtMPassivesAtk = getMonsterPassiveEffects(targetIdx);
 
@@ -829,12 +949,23 @@ function executeNormalAttack(pet) {
   if (bloodline && bloodline.effects && bloodline.effects.critRate) critChance += bloodline.effects.critRate;
   // 人物暴击率20%附加给宠物
   if (stats.critRate) critChance += stats.critRate;
+  // 血统下次攻击修改器暴击加成
+  if (_blNextAtkMods && _blNextAtkMods.critRate) critChance += _blNextAtkMods.critRate;
+  // 血统当前攻击临时暴击加成
+  if (_blCurAtkBonus && _blCurAtkBonus.critRate) critChance += _blCurAtkBonus.critRate;
+  // 血统永久暴击加成
+  if (pet._permanentBonuses && pet._permanentBonuses.critRate) critChance += pet._permanentBonuses.critRate;
   // 需求1：怪物被动 antiCrit（幸运）- 降低被暴击概率
   if (tgtMPassivesAtk.antiCrit) critChance = Math.max(0, critChance - tgtMPassivesAtk.antiCrit);
-  const isCrit = Math.random() < critChance;
+  // 血统强制暴击（美杜莎 petrify_crit 等，从上一轮 onAttackHit 传递）
+  var isCrit = _blForceCrit || Math.random() < critChance;
 
   let ignoreDef = 0;
   if (passives.ignoreDef) ignoreDef = passives.ignoreDef;
+  // 血统下次攻击修改器无视防御（暗影狼背刺等）
+  if (_blNextAtkMods && _blNextAtkMods.ignoreDef) ignoreDef += _blNextAtkMods.ignoreDef;
+  // 血统永久无视防御（精灵射手 armor_pierce 等）
+  if (pet._permanentBonuses && pet._permanentBonuses.ignoreDef) ignoreDef += pet._permanentBonuses.ignoreDef;
 
   let def = monster.def;
   if (ms.defReduced > 0) def *= (1 - ms.defReduced);
@@ -1078,6 +1209,42 @@ function executeActiveSkill(pet, skill) {
       : getPetAtkPower(pet, stats, passives, auras, buffs, bloodline);
   }
 
+  // ===== 血统机制：消费下次攻击修改器和临时加成（技能攻击同样适用）=====
+  var _skBlNextMods = null;
+  var _skBlCurBonus = null;
+  var _skBlForceCrit = false;
+  if (typeof consumeNextAttackMods === 'function') {
+    _skBlNextMods = consumeNextAttackMods(pet);
+  }
+  if (typeof consumeCurrentAttackBonuses === 'function') {
+    _skBlCurBonus = consumeCurrentAttackBonuses(pet);
+  }
+  if (pet._bloodlineForceCrit) {
+    _skBlForceCrit = true;
+    pet._bloodlineForceCrit = false;
+  }
+  // 应用下次攻击修改器到技能威力
+  if (_skBlNextMods) {
+    if (_skBlNextMods.dmgPct) power = Math.floor(power * (1 + _skBlNextMods.dmgPct));
+    if (_skBlNextMods.forceCrit) _skBlForceCrit = true;
+  }
+  // 应用当前攻击临时加成
+  if (_skBlCurBonus) {
+    if (_skBlCurBonus.dmgPct) power = Math.floor(power * (1 + _skBlCurBonus.dmgPct));
+    if (_skBlCurBonus.atkPct) power = Math.floor(power * (1 + _skBlCurBonus.atkPct));
+    if (_skBlCurBonus.magicDmgPct && isMagic) power = Math.floor(power * (1 + _skBlCurBonus.magicDmgPct));
+  }
+  // 应用永久血统加成
+  if (pet._permanentBonuses) {
+    if (pet._permanentBonuses.dmgPct) power = Math.floor(power * (1 + pet._permanentBonuses.dmgPct));
+    if (pet._permanentBonuses.atkPct && !isMagic) power = Math.floor(power * (1 + pet._permanentBonuses.atkPct));
+    if (pet._permanentBonuses.magicDmgPct && isMagic) power = Math.floor(power * (1 + pet._permanentBonuses.magicDmgPct));
+  }
+  // 技能额外无视防御（血统修改器）
+  var _skBlIgnoreDef = 0;
+  if (_skBlNextMods && _skBlNextMods.ignoreDef) _skBlIgnoreDef += _skBlNextMods.ignoreDef;
+  if (pet._permanentBonuses && pet._permanentBonuses.ignoreDef) _skBlIgnoreDef += pet._permanentBonuses.ignoreDef;
+
   let logMsg = '';
   // 需求9.1：法术连击（magic_double）追踪变量
   var magicDoubleTargets = []; // 法连触发时的目标列表（供追加施法使用）
@@ -1128,6 +1295,10 @@ function executeActiveSkill(pet, skill) {
     if (skill.bonusCrit) critChance += skill.bonusCrit;
     // 人物暴击率20%附加给宠物
     if (stats.critRate) critChance += stats.critRate;
+    // 血统暴击率加成（修改器 + 临时加成 + 永久加成）
+    if (_skBlNextMods && _skBlNextMods.critRate) critChance += _skBlNextMods.critRate;
+    if (_skBlCurBonus && _skBlCurBonus.critRate) critChance += _skBlCurBonus.critRate;
+    if (pet._permanentBonuses && pet._permanentBonuses.critRate) critChance += pet._permanentBonuses.critRate;
     let critMult = 1.5;
     if (passives.critDmg) critMult += passives.critDmg;
     if (stats.critDmg) critMult += stats.critDmg;
@@ -1159,7 +1330,7 @@ function executeActiveSkill(pet, skill) {
         rawDmg = actualPower * dmgPct * skillDmgMult * (1 + skillDmgBonus);
       } else {
         // 防御削减系数0.7→0.6：技能伤害更明显
-        rawDmg = actualPower * dmgPct * skillDmgMult * (1 + skillDmgBonus) - def * (0.6 - ignoreDefPct);
+        rawDmg = actualPower * dmgPct * skillDmgMult * (1 + skillDmgBonus) - def * (0.6 - ignoreDefPct - _skBlIgnoreDef);
       }
       rawDmg = Math.round(rawDmg * randomFloat(0.90, 1.10));
       // 需求1：怪物被动闪避（dodge / 闪避）
@@ -1176,7 +1347,7 @@ function executeActiveSkill(pet, skill) {
       // 需求1：怪物被动 antiCrit（幸运）- 降低被暴击概率
       var mAntiCrit = tgtMPassives.antiCrit || 0;
       var effectiveCritChance = Math.max(0, critChance - mAntiCrit);
-      const isCrit = Math.random() < effectiveCritChance;
+      const isCrit = _skBlForceCrit || Math.random() < effectiveCritChance;
       if (isCrit) rawDmg = Math.round(rawDmg * critMult);
       // 需求1：纯嘲讽技能允许伤害为0，其他技能最低保留1点伤害
       let dmg = isPureTaunt ? Math.max(0, rawDmg) : Math.max(1, rawDmg);
@@ -1576,9 +1747,15 @@ function executeActiveSkill(pet, skill) {
       applyBuff(pet);
       logMsg = `🛡️ ${getPetDisplayName(pet)} 释放 ${skill.name}，获得 ${skill.name} 效果（持续${skill.buffTurns || 3}回合）`;
     }
+    // ===== 血统机制：增益技能释放触发 =====
+    if (typeof triggerBloodlineMechanics === 'function') {
+      triggerBloodlineMechanics(pet, 'onBuffCast', { skill: skill, target: pet });
+    }
   }
 
   if (skill.cd) liveBattle.skillCooldowns[pet.id][skill.id] = skill.cd;
+  // BUG修复：辅助技能在无有效目标时logMsg可能为空，添加兜底
+  if (!logMsg) logMsg = `✨ ${getPetDisplayName(pet)} 使用了【${skill.name}】`;
   addBattleLog('skill', logMsg);
   liveBattle.logs.unshift({ type: 'skill', msg: logMsg });
 
@@ -1633,12 +1810,14 @@ function executeActiveSkill(pet, skill) {
   }
 
   if (currentScreen === 'main') {
-    const isHeal = category === 'single_heal' || category === 'aoe_heal';
-    if (isHeal) {
-      const petEl = document.getElementById('battle-pet-' + pet.id);
+    var isHeal = category === 'single_heal' || category === 'aoe_heal';
+    var isBuff = category === 'single_buff' || category === 'aoe_buff';
+    if (isHeal || isBuff) {
+      // 辅助技能（治疗/增益）：在施法者身上播放正面特效
+      var petEl = document.getElementById('battle-pet-' + pet.id);
       if (petEl) spawnDamageFloat(petEl, { val: 0, heal: true });
-    } else {
-      // 需求3-BUG修复：使用实际伤害数据播放动画，不再对非命中目标飘0伤害
+    } else if (targetIndices && targetIndices.length > 0) {
+      // 攻击技能：使用实际伤害数据播放动画，不再对非命中目标飘0伤害
       // 仅对被技能命中的目标播放伤害飘字
       targetIndices.forEach(function(idx) {
         var dmgInfo = skillDamageMap[idx];
@@ -1790,9 +1969,47 @@ function executeMonsterSkill(monsterIdx, skill) {
         if (tBuffs.shield >= dmg) { tBuffs.shield -= dmg; dmg = 0; }
         else { dmg -= tBuffs.shield; tBuffs.shield = 0; }
       }
+      // ===== 血统机制：前置闪避/格挡检查（怪物技能攻击，在 HP 扣减前消费）=====
+      if (tp._bloodlineForceDodge && dmg > 0) {
+        tp._bloodlineForceDodge = false;
+        dmg = 0;
+        addBattleLog('skill', `🌀 ${getPetDisplayName(tp)} 的血统闪避了 ${monster.name} 的技能！`);
+        if (typeof triggerBloodlineMechanics === 'function') {
+          triggerBloodlineMechanics(tp, 'onDodge', { attacker: monster, monsterIdx: monsterIdx });
+        }
+      } else if (tp._bloodlineForceBlock && dmg > 0) {
+        tp._bloodlineForceBlock = false;
+        dmg = 0;
+        addBattleLog('skill', `🛡️ ${getPetDisplayName(tp)} 的血统格挡完全抵挡了 ${monster.name} 的技能！`);
+      }
       liveBattle.petHp[tp.id].current = Math.max(0, liveBattle.petHp[tp.id].current - dmg);
       totalDamage += dmg;
       dmgPerPet[tp.id] = dmg;
+      // ===== 血统机制：受击触发（怪物技能攻击） =====
+      if (typeof triggerBloodlineMechanics === 'function' && dmg > 0) {
+        var _mskillHitCtx = {
+          attacker: monster, monsterIdx: monsterIdx,
+          damage: dmg, target: tp, isMagic: isMagic,
+          dmgType: skill.element || (isMagic ? 'magic' : 'physical')
+        };
+        triggerBloodlineMechanics(tp, 'onHit', _mskillHitCtx);
+        if (isMagic) {
+          triggerBloodlineMechanics(tp, 'onMagicHit', _mskillHitCtx);
+        } else {
+          triggerBloodlineMechanics(tp, 'onPhysicalHit', _mskillHitCtx);
+        }
+        // 暴击受击触发
+        if (mCritChance > 0 && rawDmg > dmg / randomFloat(0.90, 1.10)) {
+          triggerBloodlineMechanics(tp, 'onCritReceived', _mskillHitCtx);
+        }
+      }
+      // 护盾击破触发
+      if (tBuffs && tBuffs.shield === 0 && tBuffs.shieldTurns > 0 && dmg > 0) {
+        if (typeof triggerBloodlineMechanics === 'function') {
+          triggerBloodlineMechanics(tp, 'onShieldBreak', { target: tp, attacker: monster, monsterIdx: monsterIdx });
+        }
+        tBuffs.shieldTurns = 0;
+      }
       // 需求1：怪物吸血被动（vampire）
       if (mPassives.vampPct && dmg > 0) {
         var mHeal = Math.floor(dmg * mPassives.vampPct);
@@ -2073,8 +2290,10 @@ function executeMonsterAction(monsterIdx) {
     rawMonsterDmg = Math.round(rawMonsterDmg * randomFloat(0.90, 1.10));
     // 需求1：怪物被动 critRate/critDmg 加成（必杀等）
     var mCritChance2 = 0.10 + (mPassives2.critRate || 0);
+    var _mCritOccurred = false; // 暴击标记，用于 onCritReceived 触发
     if (Math.random() < mCritChance2) {
       rawMonsterDmg = Math.round(rawMonsterDmg * (1.5 + (mPassives2.critDmg || 0)));
+      _mCritOccurred = true;
     }
     let monsterDmg = Math.max(1, rawMonsterDmg);
 
@@ -2105,11 +2324,38 @@ function executeMonsterAction(monsterIdx) {
 
     if (buffs && buffs.shield > 0) {
       if (buffs.shield >= monsterDmg) { buffs.shield -= monsterDmg; monsterDmg = 0; }
-      else { monsterDmg -= buffs.shield; buffs.shield = 0; }
+      else {
+        monsterDmg -= buffs.shield; buffs.shield = 0;
+        // ===== 血统机制：护盾击破触发 =====
+        if (typeof triggerBloodlineMechanics === 'function') {
+          triggerBloodlineMechanics(targetPet, 'onShieldBreak', { target: targetPet, attacker: monster, monsterIdx: monsterIdx });
+        }
+      }
     }
 
-    liveBattle.petHp[targetPet.id].current = Math.max(0, liveBattle.petHp[targetPet.id].current - monsterDmg);
-    liveBattle.logs.unshift({ type: 'damage', msg: `👹 ${monster.name} 普攻 ${getPetDisplayName(targetPet)} 造成 ${monsterDmg} 点伤害` });
+    // ===== 血统机制：前置闪避/格挡检查（在 HP 扣减前消费）=====
+    if (targetPet._bloodlineForceDodge && monsterDmg > 0) {
+      targetPet._bloodlineForceDodge = false;
+      monsterDmg = 0;
+      liveBattle.logs.unshift({ type: 'dodge', msg: `🌀 ${getPetDisplayName(targetPet)} 的血统技能触发闪避！` });
+      addBattleLog('skill', `🌀 ${getPetDisplayName(targetPet)} 的血统闪避了攻击！`);
+      if (typeof triggerBloodlineMechanics === 'function') {
+        triggerBloodlineMechanics(targetPet, 'onDodge', { attacker: monster, monsterIdx: monsterIdx });
+      }
+      if (currentScreen === 'main') animateDodge(targetPet);
+    } else if (targetPet._bloodlineForceBlock && monsterDmg > 0) {
+      targetPet._bloodlineForceBlock = false;
+      monsterDmg = 0;
+      liveBattle.logs.unshift({ type: 'skill', msg: `🛡️ ${getPetDisplayName(targetPet)} 的血统技能触发格挡！` });
+      addBattleLog('skill', `🛡️ ${getPetDisplayName(targetPet)} 的血统格挡完全抵挡了攻击！`);
+    }
+
+liveBattle.petHp[targetPet.id].current = Math.max(0, liveBattle.petHp[targetPet.id].current - monsterDmg);
+// 寿命系统：检测宠物阵亡
+if (liveBattle.petHp[targetPet.id].current <= 0) {
+  markPetDiedInBattle(targetPet.id);
+}
+liveBattle.logs.unshift({ type: 'damage', msg: `👹 ${monster.name} 普攻 ${getPetDisplayName(targetPet)} 造成 ${monsterDmg} 点伤害` });
     addBattleLog('damage', `👹 ${monster.name} 普攻 ${getPetDisplayName(targetPet)} 造成 ${monsterDmg} 点伤害`);
 
     // ===== 血统机制：受击触发 =====
@@ -2120,6 +2366,10 @@ function executeMonsterAction(monsterIdx) {
       };
       triggerBloodlineMechanics(targetPet, 'onHit', _hitCtx);
       triggerBloodlineMechanics(targetPet, 'onPhysicalHit', _hitCtx);
+      // 暴击受击触发
+      if (_mCritOccurred) {
+        triggerBloodlineMechanics(targetPet, 'onCritReceived', _hitCtx);
+      }
     }
 
     // 需求1：怪物吸血被动（vampire）
@@ -2408,6 +2658,18 @@ function applyTurnRegen() {
 
 function processBattleDefeat() {
   if (!liveBattle) return;
+  // 进化森林战斗失败：不扣除挑战次数，不损失经验
+  if (liveBattle.isEvolutionForest) {
+    addBattleLog('info', '🌲 进化森林挑战失败，挑战次数不扣除，再接再厉！');
+    G.battleContext = null;
+    saveGame();
+    if (typeof cleanupBloodlineRT === 'function') cleanupBloodlineRT();
+    liveBattle = null;
+    if (currentScreen === 'main') render();
+    if (currentScreen === 'activity') render();
+    showToast('进化森林挑战失败，次数不扣除', 'error');
+    return;
+  }
   const expLoss = Math.floor(G.player.exp * 0.05);
   G.player.exp = Math.max(0, G.player.exp - expLoss);
   addBattleLog('info', `😞 战斗失败！损失 ${expLoss} 经验`);
@@ -2416,6 +2678,16 @@ function processBattleDefeat() {
   }
   G.statistics.totalBattles++;
 updateAchievement('battle', 1);
+
+  // ===== 寿命系统：战斗失败时阵亡宠物扣除寿命 =====
+  if (liveBattle.petsDiedThisBattle && liveBattle.petsDiedThisBattle.length > 0) {
+    liveBattle.petsDiedThisBattle.forEach(function(pid) {
+      if (typeof consumePetLifespan === 'function') {
+        consumePetLifespan('death', pid);
+      }
+    });
+  }
+
 saveGame();
 if (typeof cleanupBloodlineRT === 'function') cleanupBloodlineRT();
 liveBattle = null;
@@ -2767,6 +3039,20 @@ function processDungeonWaveComplete() {
     G.statistics.totalDungeons++;
     updateDailyTask('dungeon_run', 1);
     updateAchievement('dungeon', 1);
+
+    // ===== 寿命系统：副本战斗每次扣除1点寿命 =====
+    var teamPetIds = liveBattle.team.map(function(p) { return p.id; });
+    if (liveBattle.petsDiedThisBattle && liveBattle.petsDiedThisBattle.length > 0) {
+      liveBattle.petsDiedThisBattle.forEach(function(pid) {
+        if (typeof consumePetLifespan === 'function') {
+          consumePetLifespan('death', pid);
+        }
+      });
+    }
+    if (typeof consumePetLifespan === 'function') {
+      consumePetLifespan('dungeon', teamPetIds);
+    }
+
     saveGame();
     liveBattle = null;
     if (currentScreen === 'main') render();

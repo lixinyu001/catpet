@@ -13,6 +13,7 @@ const DEFAULT_STATE = {
     forgeLevels: { weapon: 0, helmet: 0, armor: 0, pants: 0, gloves: 0, shoes: 0 },
     formation: ['front','mid','back'],
     cultivation: { 伤害: 0, 抗性: 0, 辅助: 0 },
+    mainBattleLifespanCounter: 0, // 主线战斗寿命消耗计数器（每10次扣1点）
   },
   pets: [],
   eggs: [],
@@ -100,6 +101,18 @@ const DEFAULT_STATE = {
   digDailyUsed: {},  // 每日挖密藏次数记录 { date: count }
   // 符文系统：符文背包（对标阴阳师御魂系统）
   runeBag: [],  // [{ id, setId, slot, grade, level, mainStat:{type,value}, subStats:[{type,value}] }]
+  // 进化森林活动每日使用记录 {date: count}
+  evolutionForestUsed: {},
+  // 战斗上下文（用于标记特殊战斗类型，如进化森林）
+  battleContext: null,
+  // 六道轮回活动系统
+  samsara: {
+    currentFloor: 0,      // 当前挑战层数
+    maxFloorCleared: 0,   // 历史最高通关层数
+    reincarnationPoints: 0, // 轮回积分
+    inChallenge: false,   // 是否正在挑战中
+    divinePowers: {},     // 已获得的神通 { powerId: { star: 1 } }
+  },
 };
 
 let G = JSON.parse(JSON.stringify(DEFAULT_STATE));
@@ -311,6 +324,20 @@ if (G.mainQuest === undefined) G.mainQuest = null;
       if (!G.digDailyUsed || typeof G.digDailyUsed !== 'object') G.digDailyUsed = {};
       // 符文系统迁移：初始化符文背包
       if (!G.runeBag || !Array.isArray(G.runeBag)) G.runeBag = [];
+      // 进化森林活动迁移
+      if (!G.evolutionForestUsed || typeof G.evolutionForestUsed !== 'object') G.evolutionForestUsed = {};
+      // 主线战斗寿命计数器迁移
+      if (G.player.mainBattleLifespanCounter === undefined) G.player.mainBattleLifespanCounter = 0;
+      // 六道轮回活动系统迁移
+      if (!G.samsara || typeof G.samsara !== 'object') {
+        G.samsara = { currentFloor: 0, maxFloorCleared: 0, reincarnationPoints: 0, inChallenge: false, divinePowers: {} };
+      } else {
+        if (G.samsara.currentFloor === undefined) G.samsara.currentFloor = 0;
+        if (G.samsara.maxFloorCleared === undefined) G.samsara.maxFloorCleared = 0;
+        if (G.samsara.reincarnationPoints === undefined) G.samsara.reincarnationPoints = 0;
+        if (G.samsara.inChallenge === undefined) G.samsara.inChallenge = false;
+        if (!G.samsara.divinePowers || typeof G.samsara.divinePowers !== 'object') G.samsara.divinePowers = {};
+      }
       // 宠物符文槽位迁移：为每只宠物初始化 runes 字段
       if (G.pets && Array.isArray(G.pets)) {
         G.pets.forEach(function(pet) {
@@ -412,21 +439,27 @@ pet.bloodlineOrb.sourcePetName = pet.name || '未知宠物';
   });
 }
 
-// 进阶系统已全量移除：此函数负责存量数据迁移与道具补偿
-// 1. 将背包中的进阶丸按价值转化为钻石补偿
-// 2. 所有宠物的 advanceable 设为 false（不再可进阶）
-// 3. 保留 advanceStage 用于已进阶宠物的图鉴显示兼容
+// 新进阶系统迁移：处理旧进阶丸补偿 + 初始化新进阶字段
+// 1. 将背包中的旧进阶丸按价值转化为钻石补偿
+// 2. 可进阶宠物（PET_DEX中evolvable=true）标记为 advanceable=true
+// 3. 初始化 advanceValue 和 advanceStage 字段
 function migratePetAdvance() {
   if (!G.pets || !Array.isArray(G.pets)) return;
-  // 步骤1：宠物字段迁移 — 全部标记为不可进阶
+  // 步骤1：宠物字段迁移
   G.pets.forEach(function(pet) {
     if (!pet) return;
-    pet.advanceable = false;
-    pet.advanceValue = 0;
-    // 保留 advanceStage 用于显示已进阶宠物的名称与图鉴
+    // 新进阶系统：检查宠物是否为可进阶宠物
+    var dex = (typeof PET_DEX !== 'undefined' && pet.name) ? PET_DEX[pet.name] : null;
+    if (dex && dex.evolvable) {
+      pet.advanceable = true;
+    } else {
+      // 旧系统宠物保持不可进阶
+      pet.advanceable = false;
+    }
+    if (pet.advanceValue === undefined) pet.advanceValue = 0;
     if (pet.advanceStage === undefined) pet.advanceStage = 0;
   });
-  // 步骤2：进阶丸道具补偿 — 按价值转化为钻石
+  // 步骤2：旧进阶丸道具补偿 — 按价值转化为钻石（仅处理旧道具，新进化晶石不受影响）
   var pillCompensation = { advance_pill_low: 5, advance_pill_mid: 15, advance_pill_high: 50 };
   var totalDiamonds = 0;
   if (G.inventory && Array.isArray(G.inventory)) {
@@ -443,13 +476,13 @@ function migratePetAdvance() {
     });
   }
   if (totalDiamonds > 0) {
-    if (G.player && typeof G.player.diamonds === 'number') {
-      G.player.diamonds += totalDiamonds;
+    if (G.player && typeof G.player.diamond === 'number') {
+      G.player.diamond += totalDiamonds;
     }
     if (typeof addBattleLog === 'function') {
-      addBattleLog('loot', '💎 进阶系统已移除，背包中的进阶丸已转化为钻石补偿 ×' + totalDiamonds);
+      addBattleLog('loot', '💎 旧进阶丸已转化为钻石补偿 ×' + totalDiamonds);
     }
-    console.log('[迁移] 进阶丸道具补偿：钻石 +' + totalDiamonds);
+    console.log('[迁移] 旧进阶丸道具补偿：钻石 +' + totalDiamonds);
   }
 }
 
@@ -582,7 +615,7 @@ function checkDailyReset() {
   var dailyKeyedFields = [
     'advanceTrialUsed', 'formationActivityUsed', 'formationEscortUsed',
     'skillBookHuntUsed', 'petCaveUsed', 'dispatchDailyUsed', 'crimsonFortressUsed',
-    'digDailyUsed'
+    'digDailyUsed', 'evolutionForestUsed'
   ];
   dailyKeyedFields.forEach(function(field) {
     if (G[field] && typeof G[field] === 'object') {
@@ -696,7 +729,7 @@ function createStarterPet(name, race, rarity) {
     var range = dex.aptRange[k] || [1200, 1800];
     aptitude[k] = randomInt(range[0], range[1]);
   });
-  const bloodline = BLOODLINE_SKILLS.find(b => b.race === race);
+  const bloodline = null; // 血统重构：运行时通过 getPetBloodlineSkill 动态查询
   // 技能生成——使用公共函数 generateInnateSkills（消除重复代码）
   var maxSkills = getPetMaxSkills(name);
   var innateSkills = generateInnateSkills(name, maxSkills);
@@ -705,7 +738,8 @@ function createStarterPet(name, race, rarity) {
     name, race, rarity, growth, aptitude, bloodline,
     innateSkills, learnedSkills: [], level: 1, moonDewUsed: 0,
     petEquipment: { attack: null, hp: null, defense: null },
-    advanceStage: 0, advanceable: false, // 进阶系统已移除，保留字段用于兼容
+    advanceStage: 0, advanceable: !!(dex.evolvable), advanceValue: 0, // 新进阶系统：可进阶宠物标记为 advanceable=true
+    lifespan: randomInt(10000, 15000), // 初始寿命：10000~15000
     id: 'pet_' + Date.now() + '_' + randomInt(1000, 9999),
   };
 }
@@ -750,9 +784,9 @@ function claimNewPlayerGift() {
   var dmgDex = getPetDex(dmgName);
   var supDex = getPetDex(supName);
 
-  const starter1 = createStarterPet(defName, defDex.race, 'common'); // 防御型→前排
-  const starter2 = createStarterPet(dmgName, dmgDex.race, 'common'); // 伤害型→中排
-  const starter3 = createStarterPet(supName, supDex.race, 'common'); // 辅助型→后排
+  const starter1 = createStarterPet(defName, defDex.race, 'uncommon'); // 防御型→前排
+  const starter2 = createStarterPet(dmgName, dmgDex.race, 'uncommon'); // 伤害型→中排
+  const starter3 = createStarterPet(supName, supDex.race, 'uncommon'); // 辅助型→后排
 
   starter1.level = G.player.level;
   starter2.level = G.player.level;

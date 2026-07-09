@@ -841,15 +841,30 @@ function triggerBloodlineMechanics(pet, triggerType, context) {
       if (!rt.firstHitDone) rt.firstHitDone = true;
       if (!rt.perTurnFirstHit) rt.perTurnFirstHit = true;
     }
+    if (triggerType === 'onDeath' || triggerType === 'onAllyDeath') {
+      if (!rt.firstDeathDone) rt.firstDeathDone = true;
+    }
   });
 }
 
 // ==================== 条件判定 ====================
+// 支持 AND 多条件组合：遍历 condition 中所有 key，全部满足才通过
 function checkMechanicCondition(pet, condition, ctx, rt) {
-  var key = Object.keys(condition)[0];
-  var val = condition[key];
+  var keys = Object.keys(condition);
   var hp = liveBattle.petHp[pet.id];
+  var hasResetPerTurn = condition.resetPerTurn === true;
 
+  for (var ki = 0; ki < keys.length; ki++) {
+    var key = keys[ki];
+    var val = condition[key];
+    var result = _checkSingleCondition(pet, key, val, ctx, rt, hp, hasResetPerTurn);
+    if (!result) return false;
+  }
+  return true;
+}
+
+// 单个条件检查
+function _checkSingleCondition(pet, key, val, ctx, rt, hp, hasResetPerTurn) {
   switch (key) {
     case 'selfHpBelow':
       return hp && hp.current / hp.max < val;
@@ -882,7 +897,7 @@ function checkMechanicCondition(pet, condition, ctx, rt) {
     case 'targetHasStatus': {
       var tgtSt = ctx.target ? liveBattle.petStatus[ctx.target.id] : (ctx.targetIdx != null ? liveBattle.monsterStatusArray[ctx.targetIdx] : null);
       if (!tgtSt) return false;
-      var statusMap = { burn:'burning', poison:'poisoned', freeze:'frozen', stun:'stunned', paralyze:'stunned', corrode:'corroded', petrify:'petrified', soulBurn:'soulBurn', stealth:'stealth', invisible:'invisible', fly:'flying' };
+      var statusMap = { burn:'burning', poison:'poisoned', freeze:'frozen', stun:'stunned', paralyze:'stunned', corrode:'corroded', petrify:'petrified', soulBurn:'soulBurn', stealth:'stealth', invisible:'invisible', fly:'flying', frostFlower:'frostFlower', chaosEffect:'chaosEffect' };
       var fieldName = statusMap[val] || val;
       return tgtSt[fieldName] > 0;
     }
@@ -891,7 +906,7 @@ function checkMechanicCondition(pet, condition, ctx, rt) {
       var target = ctx.target || pet;
       var tSt = liveBattle.petStatus[target.id] || (ctx.targetIdx != null ? liveBattle.monsterStatusArray[ctx.targetIdx] : null);
       if (!tSt) return false;
-      var stackMap = { poison:'poisonStacks', rockShell:'rockShellStacks', frostbite:'frostbiteStacks', hitRateReduce:'hitRateReduceStacks' };
+      var stackMap = { poison:'poisonStacks', rockShell:'rockShellStacks', frostbite:'frostbiteStacks', hitRateReduce:'hitRateReduceStacks', frostFlower:'frostFlowerStacks', spdReduce:'spdReduceStacks', fireEnergy:'fireEnergyStacks', devour:'devourStacks', tailUnlock:'tailUnlockStacks', hitStack:'hitStacks', fireDmgBonus:'fireDmgBonusStacks', snipeStack:'snipeStacks', poisonCharge:'poisonChargeStacks' };
       var field = stackMap[sName] || (sName + 'Stacks');
       return (tSt[field] || 0) >= sCount;
     }
@@ -900,9 +915,9 @@ function checkMechanicCondition(pet, condition, ctx, rt) {
       return !ps || (!ps.stunned && !ps.frozen && !ps.silenced && !ps.sleeping && !ps.rooted);
     }
     case 'isFirstAttack':
-      return !rt.firstAttackDone;
+      return hasResetPerTurn ? !rt.perTurnFirstAttack : !rt.firstAttackDone;
     case 'isFirstHit':
-      return !rt.firstHitDone;
+      return hasResetPerTurn ? !rt.perTurnFirstHit : !rt.firstHitDone;
     case 'isFirstDeath':
       return !rt.firstDeathDone;
     case 'everyNTurns':
@@ -955,8 +970,15 @@ function checkMechanicCondition(pet, condition, ctx, rt) {
     }
     case 'healBelowThreshold':
       return ctx.healAmount != null && ctx.healAmount < (ctx.healerMaxHp || 999999) * 0.10;
+    case 'statusType':
+      if (val === 'poison') return ctx.status && (ctx.status.poisoned > 0 || ctx.status.poisonPct > 0);
+      if (val === 'burn') return ctx.status && (ctx.status.burning > 0 || ctx.status.burnPct > 0);
+      return true;
+    case 'wasControlledThisTurn':
+      return rt.wasControlledThisTurn === true;
+    case 'resetPerTurn':
+      return true;
     default:
-      // 未知条件默认通过
       return true;
   }
 }
@@ -1752,6 +1774,19 @@ function evalDynamicBonus(pet, params, ctx) {
     result = (stats.速度 || 10) * 0.001;
   } else if (formula.indexOf('selfSpdPct') >= 0) {
     result = 0.05;
+  } else if (formula.indexOf('targetChaosEffectCount') >= 0) {
+    var tgtStC = ctx.target ? liveBattle.petStatus[ctx.target.id] : (ctx.targetIdx != null ? liveBattle.monsterStatusArray[ctx.targetIdx] : null);
+    result = (tgtStC && tgtStC.chaosEffect > 0) ? 0.10 : 0;
+  } else if (formula.indexOf('statDiffOverPct') >= 0) {
+    // 混元圣兽：基于自身与目标属性差值的加成
+    var selfStats = getPetStats(pet);
+    var tgtStats = ctx.target ? getPetStats(ctx.target) : null;
+    if (tgtStats) {
+      var diff = Math.max(0, (selfStats.攻击力 || 0) - (tgtStats.攻击力 || 0)) / Math.max(1, tgtStats.攻击力 || 1);
+      result = 0.08 * Math.min(5, Math.floor(diff / 0.20));
+    } else {
+      result = 0;
+    }
   }
 
   return Math.min(result, max);

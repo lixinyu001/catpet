@@ -35,6 +35,10 @@ function getItemName(id) {
     dig_map: '密藏图', dig_shovel: '探宝铲',
     // 神兽精华
     divine_essence: '神兽精华',
+    // 延寿道具
+    lifespan_low: '低级延寿丹', lifespan_mid: '中级延寿丹', lifespan_high: '高级延寿丹',
+    // 宠物进阶道具
+    evolution_crystal_low: '低级进化晶石', evolution_crystal_mid: '中级进化晶石', evolution_crystal_high: '高级进化晶石',
   };
   // 阵法书道具名
   if (id && id.indexOf(FORMATION_BOOK_PREFIX) === 0) {
@@ -47,8 +51,9 @@ function getItemName(id) {
   if (id && id.indexOf(EXTRACTED_BLOOD_ORB_PREFIX) === 0) {
     var item = G.inventory.find(function(i) { return i.id === id; });
     if (item && item.isExtractedBloodOrb) {
-      var blDef = BLOODLINE_SKILLS.find(function(b) { return b.id === item.bloodlineId; });
-      var blName = blDef ? blDef.name : '未知血统';
+      // 血统重构：从 PET_BLOOD_ALL 查询血统名称
+      var _blData = (typeof PET_BLOOD_ALL !== 'undefined' && item.sourcePetName) ? PET_BLOOD_ALL[item.sourcePetName] : null;
+      var blName = _blData ? _blData.name : '未知血统';
       var qColor = BLOOD_ORB_QUALITY_NAMES[item.quality] || item.quality;
       return blName + '·' + qColor + '珠（来源:' + item.sourcePetName + '）';
     }
@@ -1225,11 +1230,230 @@ function cultivateMax(attr) {
 }
 
 
-// ==================== [已移除] 宠物进阶系统 ====================
-// 进阶系统已全量移除，相关函数（getPetAdvanceInfo / useAdvancePill / advancePet / startAdvanceTrial）均已删除
-// 存量进阶丸道具补偿逻辑见 state.js migratePetAdvance()
-// getPetAdvanceInfo 保留空实现以避免其他模块引用报错
-function getPetAdvanceInfo(pet) { return null; }
+// ==================== 新进阶系统（进化晶石） ====================
+// 旧进阶丸系统已移除，新系统使用进化晶石道具
+// 进化晶石产出来源于进化森林活动
+
+/**
+ * 获取宠物进阶信息（兼容旧接口，转发到 config.js getPetEvolveInfo）
+ */
+function getPetAdvanceInfo(pet) {
+  if (!pet) return null;
+  return getPetEvolveInfo(pet);
+}
+
+/**
+ * 使用进化晶石增加宠物进阶值
+ * @param {string} petId - 宠物ID
+ * @param {string} itemTier - 道具品质: 'low' / 'mid' / 'high'
+ * @returns {{ ok: boolean, msg: string, crit?: boolean, critMult?: number, gain?: number, advanced?: boolean }}
+ */
+function useEvolutionCrystal(petId, itemTier) {
+  var pet = G.pets.find(function(p) { return p.id === petId; });
+  if (!pet) return { ok: false, msg: '宠物不存在' };
+
+  var evolveInfo = getPetEvolveInfo(pet);
+  if (!evolveInfo.canEvolve) {
+    if (evolveInfo.maxed) return { ok: false, msg: '该宠物已达到最高进阶形态' };
+    return { ok: false, msg: '该宠物不可进阶' };
+  }
+
+  var config = EVOLVE_SYSTEM_CONFIG.ITEMS[itemTier];
+  if (!config) return { ok: false, msg: '无效的道具品质' };
+
+  // 检查道具库存
+  var invItem = G.inventory.find(function(i) { return i.id === config.id; });
+  if (!invItem || invItem.count < 1) {
+    return { ok: false, msg: '道具不足：' + config.name };
+  }
+
+  // 消耗道具
+  invItem.count--;
+  if (invItem.count <= 0) {
+    var idx = G.inventory.indexOf(invItem);
+    if (idx >= 0) G.inventory.splice(idx, 1);
+  }
+
+  // 暴击计算
+  var critResult = calculateEvolutionCrystalValue(itemTier);
+  var gain = critResult.value;
+  pet.advanceValue = (pet.advanceValue || 0) + gain;
+
+  // 检查是否达到进阶上限
+  var advanced = false;
+  var advanceMsg = '';
+  if (pet.advanceValue >= evolveInfo.advanceValueMax) {
+    // 执行进阶
+    var result = advancePetEvolve(petId);
+    if (result.ok) {
+      advanced = true;
+      advanceMsg = result.msg;
+    }
+  }
+
+  return {
+    ok: true,
+    msg: critResult.crit
+      ? '✨ 暴击×' + critResult.critMult + '！获得 ' + gain + ' 点进阶值' + (advanced ? ' | ' + advanceMsg : '')
+      : '获得 ' + gain + ' 点进阶值' + (advanced ? ' | ' + advanceMsg : ''),
+    crit: critResult.crit,
+    critMult: critResult.critMult,
+    gain: gain,
+    advanced: advanced,
+  };
+}
+
+// ==================== 进化森林活动 ====================
+
+/**
+ * 获取今日进化森林挑战次数
+ */
+function getEvolutionForestUsedToday() {
+  var today = new Date().toDateString();
+  return (G.evolutionForestUsed && G.evolutionForestUsed[today]) || 0;
+}
+
+/**
+ * 进入进化森林指定层数战斗
+ * @param {number} layer - 层数 1~5
+ * @returns {{ ok: boolean, msg?: string }}
+ */
+function enterEvolutionForest(layer) {
+  if (!EVOLUTION_FOREST_CONFIG) return { ok: false, msg: '活动配置不存在' };
+  if (layer < 1 || layer > EVOLUTION_FOREST_CONFIG.layers.length) {
+    return { ok: false, msg: '无效的层数' };
+  }
+  // 等级检查
+  if (G.player.level < EVOLUTION_FOREST_CONFIG.minLevel) {
+    return { ok: false, msg: '需要 ' + EVOLUTION_FOREST_CONFIG.minLevel + ' 级才能进入进化森林' };
+  }
+  // 每日次数检查
+  var used = getEvolutionForestUsedToday();
+  if (used >= EVOLUTION_FOREST_CONFIG.dailyLimit) {
+    return { ok: false, msg: '今日挑战次数已用完（' + EVOLUTION_FOREST_CONFIG.dailyLimit + '次/天）' };
+  }
+  // 检查是否有出战宠物
+  var hasPet = false;
+  if (G.player.activeTeam) {
+    for (var i = 0; i < G.player.activeTeam.length; i++) {
+      if (G.player.activeTeam[i]) { hasPet = true; break; }
+    }
+  }
+  if (!hasPet) {
+    return { ok: false, msg: '请先设置出战宠物' };
+  }
+
+  var layerConfig = EVOLUTION_FOREST_CONFIG.layers[layer - 1];
+  var lv = layerConfig.level;
+  var lvScale = 1 + lv * 0.012;
+
+  // 生成怪物（参考主线怪物强度公式，使用 layerConfig 的 hpMult/atkMult）
+  var monsterHp = Math.floor((40 + lv * 20) * layerConfig.hpMult * lvScale);
+  var monsterAtk = Math.floor((4 + lv * 3.8) * layerConfig.atkMult * lvScale);
+  var monsterDef = Math.floor(lv * 2.0 * 1.6);
+  var monster = {
+    id: 'ef_monster_' + Date.now(),
+    name: layerConfig.monsterName,
+    level: lv,
+    hp: monsterHp,
+    maxHp: monsterHp,
+    atk: monsterAtk,
+    def: monsterDef,
+    expReward: 0,
+    goldReward: 0,
+  };
+
+  // 设置战斗上下文：标记为进化森林战斗，存储怪物数据供 spawnMonsterDirect 使用
+  G.battleContext = {
+    type: 'evolution_forest',
+    layer: layer,
+    monsterName: layerConfig.monsterName,
+    monster: monster,
+    title: layerConfig.name + ' - ' + layerConfig.monsterName,
+  };
+
+  // 使用 spawnMonsterDirect 进入战斗（battle.js 会检查 G.battleContext）
+  if (typeof spawnMonsterDirect === 'function') {
+    spawnMonsterDirect();
+  }
+
+  return { ok: true };
+}
+
+/**
+ * 进化森林战斗结算（战斗胜利时调用）
+ * 挑战成功发放奖励，挑战失败不扣除挑战次数
+ * @param {number} layer - 层数
+ * @returns {{ ok: boolean, rewards?: object, msg?: string }}
+ */
+function settleEvolutionForest(layer) {
+  if (!EVOLUTION_FOREST_CONFIG) return { ok: false, msg: '活动配置不存在' };
+  if (layer < 1 || layer > EVOLUTION_FOREST_CONFIG.layers.length) {
+    return { ok: false, msg: '无效的层数' };
+  }
+
+  // 扣除挑战次数（仅成功时扣除）
+  var today = new Date().toDateString();
+  if (!G.evolutionForestUsed) G.evolutionForestUsed = {};
+  if (!G.evolutionForestUsed[today]) G.evolutionForestUsed[today] = 0;
+  G.evolutionForestUsed[today]++;
+
+  // 获取奖励配置
+  var rewardConfig = EVOLUTION_FOREST_CONFIG.rewards[layer - 1];
+  var rewards = { gold: 0, exp: 0, items: [] };
+
+  // 金币奖励
+  if (rewardConfig.gold) {
+    rewards.gold = randomInt(rewardConfig.gold[0], rewardConfig.gold[1]);
+    G.player.gold += rewards.gold;
+  }
+  // 经验奖励
+  if (rewardConfig.exp) {
+    rewards.exp = randomInt(rewardConfig.exp[0], rewardConfig.exp[1]);
+    if (typeof addExp === 'function') {
+      addExp(rewards.exp);
+    } else {
+      G.player.exp += rewards.exp;
+    }
+  }
+  // 辅助函数：添加道具到背包
+  function _addInvItem(itemId, count) {
+    var existing = G.inventory.find(function(i) { return i.id === itemId; });
+    if (existing) existing.count += count;
+    else G.inventory.push({ id: itemId, count: count });
+  }
+  // 低级晶石掉落
+  if (rewardConfig.crystalLow) {
+    var lowCount = randomInt(rewardConfig.crystalLow[0], rewardConfig.crystalLow[1]);
+    if (lowCount > 0) {
+      _addInvItem('evolution_crystal_low', lowCount);
+      rewards.items.push({ id: 'evolution_crystal_low', name: '低级进化晶石', count: lowCount });
+    }
+  }
+  // 中级晶石掉落
+  if (rewardConfig.crystalMid && Math.random() < rewardConfig.crystalMid.chance) {
+    var midCount = rewardConfig.crystalMid.count;
+    _addInvItem('evolution_crystal_mid', midCount);
+    rewards.items.push({ id: 'evolution_crystal_mid', name: '中级进化晶石', count: midCount });
+  }
+  // 高级晶石掉落
+  if (rewardConfig.crystalHigh && Math.random() < rewardConfig.crystalHigh.chance) {
+    var highCount = rewardConfig.crystalHigh.count;
+    _addInvItem('evolution_crystal_high', highCount);
+    rewards.items.push({ id: 'evolution_crystal_high', name: '高级进化晶石', count: highCount });
+  }
+
+  // 记录活动日志
+  if (typeof addActivityLog === 'function') {
+    var logParts = [];
+    if (rewards.gold) logParts.push('金币' + rewards.gold);
+    if (rewards.exp) logParts.push('经验' + rewards.exp);
+    rewards.items.forEach(function(it) { logParts.push(it.name + '×' + it.count); });
+    addActivityLog('evolution_forest', '进化森林第' + layer + '层通关：' + logParts.join('、'), 'win');
+  }
+
+  return { ok: true, rewards: rewards };
+}
 
 // ==================== 需求10：宠物炼化系统 ====================
 
@@ -1297,7 +1521,7 @@ function refinePet(petId, itemId) {
 
   // 记录宠物名（销毁前）
   var petName = (typeof getPetDisplayName === 'function') ? getPetDisplayName(pet) : pet.name;
-  var petRarity = pet.rarity || 'common';
+  var petRarity = pet.rarity || 'uncommon';
 
   // 销毁宠物
   var petIdx = G.pets.indexOf(pet);
@@ -2061,13 +2285,8 @@ function extractPetBloodline(petId, orbTierId) {
   // 重新获取宠物（confirm 期间可能变化）
   pet = G.pets.find(function(p) { return p.id === petId; });
   if (!pet) { showToast('宠物不存在', 'error'); return; }
-  // 获取血统ID（融合限定宠物有专属血统）
-  var bloodlineId;
-  if (FUSION_PET_BLOODLINES[pet.name]) {
-    bloodlineId = FUSION_PET_BLOODLINES[pet.name];
-  } else {
-    bloodlineId = getPetBloodlineId(pet.name);
-  }
+  // 血统重构：bloodlineId 不再需要，血统珠仅记录来源宠物名
+  var bloodlineId = 'bl_' + pet.name;
   // 决定品质：随机抽取（与宠物品质无关）
   var quality = rollRandomBloodOrbQuality();
   // 消耗血统珠
@@ -2098,11 +2317,9 @@ function extractPetBloodline(petId, orbTierId) {
     G.player.activeTeam = G.player.activeTeam.filter(function(id) { return id !== petId; });
   }
   saveGame();
-  // 需求2：修复抽取血统时文本提示与实际不一致的Bug
-  // 使用 getPetBloodlineSkill 获取宠物实际显示的血统名称（含PET_BLOODLINE_DEX专属名），而非BLOODLINE_SKILLS通用名
-  var bDef = BLOODLINE_SKILLS.find(function(b) { return b.id === bloodlineId; });
+  // 血统重构：使用 getPetBloodlineSkill 获取宠物实际显示的血统名称
   var actualBl = (typeof getPetBloodlineSkill === 'function') ? getPetBloodlineSkill(pet) : null;
-  var blDisplayName = actualBl ? actualBl.name : (bDef ? bDef.name : '血统');
+  var blDisplayName = actualBl ? actualBl.name : '血统';
   var qName = BLOOD_ORB_QUALITY_NAMES[quality] || quality;
   showToast('🔮 成功抽取 ' + petName + ' 的血统！宠物已消耗，获得 ' + qName + '品质「' + blDisplayName + '」', 'success');
   // 需求3：每日任务追踪
@@ -2135,10 +2352,9 @@ function applyBloodOrbToPet(petId, orbItemId) {
   orb.count -= 1;
   if (orb.count <= 0) G.inventory.splice(orbIdx, 1);
   saveGame();
-  // 需求1重构：植入血统珠后，宠物使用自身专属血统（非种族通用血统）
-  // 提示文本显示宠物自身专属血统名称 + 血统珠品质
-  var petDexEntry = (typeof PET_BLOODLINE_DEX !== 'undefined' && pet.name) ? PET_BLOODLINE_DEX[pet.name] : null;
-  var blDisplayName = petDexEntry ? petDexEntry.name : (pet.name + '之血');
+  // 血统重构：从 PET_BLOOD_ALL 查询血统名称
+  var _blData2 = (typeof PET_BLOOD_ALL !== 'undefined' && pet.name) ? PET_BLOOD_ALL[pet.name] : null;
+  var blDisplayName = _blData2 ? _blData2.name : (pet.name + '之血');
   var qName = (typeof BLOOD_ORB_QUALITY_NAMES !== 'undefined') ? (BLOOD_ORB_QUALITY_NAMES[orb.quality] || orb.quality) : orb.quality;
   showToast('🔮 ' + getPetDisplayName(pet) + ' 已植入血统珠，专属血统「' + blDisplayName + '」获得' + qName + '品质强化', 'success');
   if (typeof render === 'function') render();
@@ -2341,9 +2557,135 @@ function claimBattlePassReward(level) {
   return true;
 }
 
-// ==================== REBIRTH ====================
+// ==================== REBIRTH（六道轮回前置） ====================
+// 转生条件：1. 角色等级达到maxLevel  2. 六道轮回通关≥10层
+function canRebirth() {
+  if (G.player.level < G.player.maxLevel) return false;
+  if (!G.samsara || G.samsara.maxFloorCleared < SAMSARA_REBIRTH_MIN_FLOOR) return false;
+  return true;
+}
 
-function canRebirth() { return G.player.level >= G.player.maxLevel; }
+// 检查六道轮回是否已解锁
+function isSamsaraUnlocked() {
+  return G.player.level >= SAMSARA_UNLOCK_LEVEL || G.player.rebirth > 0;
+}
+
+// 六道轮回：开始挑战
+function startSamsaraChallenge() {
+  if (!isSamsaraUnlocked()) {
+    showToast('需要达到' + SAMSARA_UNLOCK_LEVEL + '级才能参与六道轮回', 'error');
+    return false;
+  }
+  var team = getTeamPets();
+  if (team.length === 0) {
+    showToast('请先设置出战宠物', 'error');
+    return false;
+  }
+  // 检查寿命限制
+  for (var i = 0; i < team.length; i++) {
+    if (!team[i].isDivineBeast && team[i].lifespan !== undefined && team[i].lifespan < 50) {
+      showToast('宠物【' + getPetDisplayName(team[i]) + '】寿命不足50，无法参与战斗', 'error');
+      return false;
+    }
+  }
+  G.samsara.inChallenge = true;
+  G.samsara.currentFloor = G.samsara.currentFloor || 0;
+  saveGame();
+  return true;
+}
+
+// 六道轮回：挑战下一层
+function samsaraNextFloor() {
+  if (!G.samsara || !G.samsara.inChallenge) return null;
+  G.samsara.currentFloor++;
+  var floorData = getSamsaraFloorData(G.samsara.currentFloor);
+  saveGame();
+  return floorData;
+}
+
+// 六道轮回：通关当前层
+function samsaraClearFloor() {
+  if (!G.samsara || !G.samsara.inChallenge) return;
+  var floor = G.samsara.currentFloor;
+  if (floor > G.samsara.maxFloorCleared) {
+    G.samsara.maxFloorCleared = floor;
+  }
+  saveGame();
+}
+
+// 六道轮回：挑战失败
+function samsaraFailChallenge() {
+  if (!G.samsara) return;
+  G.samsara.inChallenge = false;
+  // 失败不重置当前层数，玩家可从当前层继续
+  saveGame();
+}
+
+// 六道轮回：主动退出挑战
+function samsaraQuitChallenge() {
+  if (!G.samsara) return;
+  G.samsara.inChallenge = false;
+  saveGame();
+}
+
+// 六道轮回：结算转生（通关≥10层时可选择结算）
+function samsaraSettleRebirth() {
+  if (!G.samsara || G.samsara.currentFloor < SAMSARA_REBIRTH_MIN_FLOOR) {
+    showToast('需要通关至少' + SAMSARA_REBIRTH_MIN_FLOOR + '层才能结算转生', 'error');
+    return false;
+  }
+  // 计算轮回积分
+  var points = calcSamsaraPoints(G.samsara.currentFloor);
+  G.samsara.reincarnationPoints = (G.samsara.reincarnationPoints || 0) + points;
+  // 执行转生
+  var result = doRebirth();
+  if (result) {
+    // 转生后重置挑战进度
+    G.samsara.inChallenge = false;
+    G.samsara.currentFloor = 0;
+    showToast('六道轮回结算完成！获得 ' + points + ' 轮回积分', 'success');
+    saveGame();
+  }
+  return result;
+}
+
+// 六道轮回：神通抽奖
+function samsaraDivinePowerGacha(times) {
+  times = times || 1;
+  var cost = SAMSARA_GACHA_COST * times;
+  if (!G.samsara || (G.samsara.reincarnationPoints || 0) < cost) {
+    showToast('轮回积分不足！需要' + cost + '积分', 'error');
+    return null;
+  }
+  G.samsara.reincarnationPoints -= cost;
+  var results = [];
+  for (var i = 0; i < times; i++) {
+    // 按品质概率抽取
+    var r = Math.random();
+    var cum = 0;
+    var chosenRarity = 'rare';
+    for (var rarity in DIVINE_POWER_GACHA_RATES) {
+      cum += DIVINE_POWER_GACHA_RATES[rarity];
+      if (r < cum) { chosenRarity = rarity; break; }
+    }
+    // 从该品质的神通中随机选一个
+    var pool = DIVINE_POWERS.filter(function(p) { return p.rarity === chosenRarity; });
+    var chosen = pickRandom(pool);
+    if (!chosen) continue;
+    // 检查是否已拥有
+    if (G.samsara.divinePowers[chosen.id]) {
+      // 重复抽取：升星
+      G.samsara.divinePowers[chosen.id].star = (G.samsara.divinePowers[chosen.id].star || 1) + 1;
+      results.push({ power: chosen, isDup: true, newStar: G.samsara.divinePowers[chosen.id].star });
+    } else {
+      // 新获得
+      G.samsara.divinePowers[chosen.id] = { star: 1 };
+      results.push({ power: chosen, isDup: false, newStar: 1 });
+    }
+  }
+  saveGame();
+  return results;
+}
 
 function doRebirth() {
   if (!canRebirth()) return false;
@@ -2414,7 +2756,7 @@ function doRebirth() {
   if (typeof battleTurnTimer !== 'undefined' && battleTurnTimer) { clearTimeout(battleTurnTimer); battleTurnTimer = null; }
   if (typeof battleSpawnTimer !== 'undefined' && battleSpawnTimer) { clearTimeout(battleSpawnTimer); battleSpawnTimer = null; }
   setAchievement('rebirth', G.player.rebirth);
-  showToast(`转生成功！当前转生次数：${G.player.rebirth}，等级上限：${G.player.maxLevel}（突破新等级上限可获得天赋点）`, 'success');
+  showToast('转生成功！当前转生次数：' + G.player.rebirth + '，等级上限：' + G.player.maxLevel, 'success');
   saveGame();
   return true;
 }
@@ -2479,6 +2821,177 @@ function startTowerBattle() {
     return { victory: true, floor: floor.floor, isBoss: floor.isBoss, reward: floor.reward, rounds: round, log: log };
   }
   return { victory: false, floor: floor.floor, rounds: round, log: log };
+}
+
+// ==================== SAMSARA BATTLE ====================
+// 六道轮回战斗模拟（简化回合制，应用神通加成）
+
+function startSamsaraBattle() {
+  if (!G.samsara || !G.samsara.inChallenge) return null;
+  var floorData = samsaraNextFloor();
+  if (!floorData) return null;
+  var team = getTeamPets();
+  if (team.length === 0) return null;
+  
+  // 获取神通效果
+  var dpEffects = (typeof getAllDivinePowerEffects === 'function') ? getAllDivinePowerEffects() : [];
+  
+  var monsterHp = floorData.hp;
+  var monsterMaxHp = floorData.hp;
+  var monsterAtk = floorData.atk;
+  var monsterDef = floorData.def;
+  var monsterSpd = floorData.spd;
+  
+  var petStates = team.map(function(p) {
+    var stats = getPetStats(p);
+    var hp = stats.气血;
+    var atk = stats.力量 * 2 + 10;
+    var def = stats.体质;
+    var spd = stats.速度 || 10;
+    var critRate = 0.15;
+    var critDmg = 1.5;
+    var vampPct = 0;
+    var dmgReduce = 0;
+    var regenPct = 0;
+    var defIgnore = 0;
+    var dodgeRate = 0;
+    
+    // 应用神通加成
+    dpEffects.forEach(function(eff) {
+      var v = eff.effect.value;
+      switch (eff.effect.type) {
+        case 'atkPct': atk *= (1 + v); break;
+        case 'defPct': def *= (1 + v); break;
+        case 'spdPct': spd *= (1 + v); break;
+        case 'intPct': break; // 灵力在简化战斗中不直接影响
+        case 'hpPct': hp = Math.floor(hp * (1 + v)); break;
+        case 'mpPct': break;
+        case 'allPct': atk *= (1 + v); def *= (1 + v); hp = Math.floor(hp * (1 + v)); spd *= (1 + v); break;
+        case 'skillDmg': atk *= (1 + v * 0.5); break; // 技能伤害转化为部分攻击力
+        case 'regenPct': regenPct = v; break;
+        case 'defIgnore': defIgnore = v; break;
+        case 'critRate': critRate += v; break;
+        case 'dodgeRate': dodgeRate += v; break;
+        case 'dmgReduce': dmgReduce = v; break;
+        case 'vampPct': vampPct = v; break;
+        case 'critDmg': critDmg += v; break;
+        case 'stunChance': break; // 简化战斗中暂不模拟
+        case 'skillCDR': break;
+        case 'extraAtk': break;
+        case 'revive': break;
+      }
+    });
+    
+    return {
+      id: p.id, name: getPetDisplayName(p),
+      hp: Math.floor(hp), maxHp: Math.floor(hp),
+      atk: Math.floor(atk), def: Math.floor(def), spd: Math.floor(spd),
+      critRate: critRate, critDmg: critDmg, vampPct: vampPct,
+      dmgReduce: dmgReduce, regenPct: regenPct, defIgnore: defIgnore,
+      dodgeRate: dodgeRate, alive: true, revived: false,
+    };
+  });
+  
+  var round = 0;
+  var maxRounds = 50;
+  var log = [];
+  
+  while (round < maxRounds) {
+    round++;
+    // 宠物攻击（按速度排序）
+    var alivePets = petStates.filter(function(p) { return p.alive; });
+    if (alivePets.length === 0) break;
+    alivePets.sort(function(a, b) { return b.spd - a.spd; });
+    
+    for (var i = 0; i < alivePets.length; i++) {
+      var ps = alivePets[i];
+      if (!ps.alive) continue;
+      var effectiveDef = monsterDef * (1 - ps.defIgnore);
+      var dmg = Math.max(1, Math.floor(ps.atk - effectiveDef * 0.5));
+      var isCrit = Math.random() < ps.critRate;
+      if (isCrit) dmg = Math.floor(dmg * ps.critDmg);
+      monsterHp -= dmg;
+      log.push('第' + round + '回合 ' + ps.name + (isCrit ? ' 暴击' : '') + '造成 ' + dmg + ' 伤害');
+      // 吸血
+      if (ps.vampPct > 0) {
+        var heal = Math.floor(dmg * ps.vampPct);
+        ps.hp = Math.min(ps.maxHp, ps.hp + heal);
+      }
+      if (monsterHp <= 0) break;
+    }
+    if (monsterHp <= 0) break;
+    
+    // 怪物反击
+    alivePets = petStates.filter(function(p) { return p.alive; });
+    if (alivePets.length === 0) break;
+    var target = alivePets[Math.floor(Math.random() * alivePets.length)];
+    // 闪避
+    if (Math.random() < target.dodgeRate) {
+      log.push('第' + round + '回合 ' + target.name + ' 闪避了攻击');
+    } else {
+      var monsterDmg = Math.max(1, Math.floor(monsterAtk - target.def * 0.5));
+      monsterDmg = Math.floor(monsterDmg * (1 - target.dmgReduce));
+      target.hp -= monsterDmg;
+      log.push('第' + round + '回合 轮回守卫造成 ' + monsterDmg + ' 伤害给 ' + target.name);
+      if (target.hp <= 0) {
+        // 免死神通
+        var revivePower = dpEffects.find(function(e) { return e.effect.type === 'revive'; });
+        if (revivePower && !target.revived) {
+          target.hp = Math.floor(target.maxHp * revivePower.effect.value);
+          target.revived = true;
+          target.alive = true;
+          log.push(target.name + ' 触发【不灭金身】，恢复 ' + target.hp + ' 气血！');
+        } else {
+          target.alive = false;
+          log.push(target.name + ' 阵亡');
+        }
+      }
+    }
+    
+    // 回合末恢复
+    petStates.forEach(function(p) {
+      if (p.alive && p.regenPct > 0) {
+        var regen = Math.floor(p.maxHp * p.regenPct);
+        p.hp = Math.min(p.maxHp, p.hp + regen);
+      }
+    });
+  }
+  
+  var victory = monsterHp <= 0;
+  var result = {
+    victory: victory,
+    floor: floorData.floor,
+    floorData: floorData,
+    rounds: round,
+    log: log.slice(-10), // 仅保留最后10条日志
+  };
+  
+  if (victory) {
+    samsaraClearFloor();
+    // 奖励
+    if (floorData.exp) addExp(floorData.exp);
+    if (floorData.gold) addGold(floorData.gold);
+    result.rewards = { exp: floorData.exp, gold: floorData.gold };
+  } else {
+    samsaraFailChallenge();
+  }
+  
+  // 寿命消耗（活动战斗每次1点）
+  var teamPetIds = team.map(function(p) { return p.id; });
+  if (typeof consumePetLifespan === 'function') {
+    consumePetLifespan('activity', teamPetIds);
+  }
+  // 阵亡宠物扣除50寿命
+  petStates.forEach(function(ps) {
+    if (!ps.alive) {
+      if (typeof consumePetLifespan === 'function') {
+        consumePetLifespan('death', ps.id);
+      }
+    }
+  });
+  
+  saveGame();
+  return result;
 }
 
 // ==================== MARKET ====================

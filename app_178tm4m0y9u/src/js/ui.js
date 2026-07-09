@@ -113,6 +113,12 @@ const SHOP_ITEMS = [
   { id: 'dig_shovel', name: '探宝铲', desc: '挖密藏中增加1次挖掘机会', price: 5, icon: '⛏️', action: 'item', currency: 'diamond', quality: 'mid' },
   { id: 'dig_lens', name: '透视镜', desc: '挖密藏中透视1个格子内容（不消耗挖掘次数）', price: 8, icon: '🔍', action: 'item', currency: 'diamond', quality: 'mid' },
   { id: 'dig_key', name: '密藏钥匙', desc: '挖密藏中开启锁住的宝箱格', price: 10, icon: '🗝️', action: 'item', currency: 'diamond', quality: 'high' },
+  // 神兽精华（钻石购买，200钻石/个）
+  { id: 'divine_essence', name: '神兽精华', desc: '蕴含神兽之力的精华，集齐99个可随机兑换1只神兽', price: 200, icon: '✨', action: 'divine_essence', currency: 'diamond', quality: 'high' },
+  // 延寿道具（金币购买）
+  { id: 'lifespan_low', name: '低级延寿丹', desc: '为宠物增加500点寿命，10%概率降低某项资质或成长', price: 3000, icon: '💊', action: 'lifespan_item', lifespanAmount: 500, currency: 'gold', quality: 'low' },
+  { id: 'lifespan_mid', name: '中级延寿丹', desc: '为宠物增加1000点寿命，10%概率降低某项资质或成长', price: 12000, icon: '🏺', action: 'lifespan_item', lifespanAmount: 1000, currency: 'gold', quality: 'mid' },
+  { id: 'lifespan_high', name: '高级延寿丹', desc: '为宠物增加2000点寿命，10%概率降低某项资质或成长', price: 45000, icon: '🧪', action: 'lifespan_item', lifespanAmount: 2000, currency: 'gold', quality: 'high' },
 ];
 
 const EQUIPMENT_SLOTS = [
@@ -1080,7 +1086,7 @@ function render() {
       case 'market': app.innerHTML = renderMarketScreen(); break;
       case 'daily': app.innerHTML = renderDailyScreen(); break;
       case 'tower': window._activitySheet = 'tower'; app.innerHTML = renderActivityScreen(); break;
-      case 'rebirth': app.innerHTML = renderRebirthScreen(); break;
+      case 'samsara': app.innerHTML = renderSamsaraScreen(); break;
       case 'fusion': app.innerHTML = renderFusionScreen(); break;
       case 'petequip': app.innerHTML = renderPetEquipScreen(); break;
       case 'formation': app.innerHTML = renderFormationScreen(); break;
@@ -1260,7 +1266,7 @@ function renderNav() {
     { id: 'activity', icon: '🎯', label: '活动' },
     { id: 'treasure', icon: '🗺️', label: '藏宝图' },
     { id: 'dig', icon: '⛏️', label: '挖密藏' },
-    { id: 'rebirth', icon: '🔄', label: '转生' },
+    { id: 'samsara', icon: '🌀', label: '六道轮回' },
   ];
   return tabs.map(t => {
     // 需求5：显示锁定状态
@@ -1850,6 +1856,16 @@ function renderPetDetailModal() {
         <div class="bg-panel rounded-lg p-2"><span class="text-secondary">等级：</span>Lv.${pet.level}</div>
         <div class="bg-panel rounded-lg p-2"><span class="text-secondary">成长：</span><span class="text-gold">${pet.growth.toFixed(2)}</span></div>
         <div class="bg-panel rounded-lg p-2"><span class="text-secondary">战力：</span><span style="color:${RARITY_COLORS[RARITIES.indexOf(pet.rarity)]}">${Math.floor(getPetCombatPower(pet))}</span></div>
+        <div class="bg-panel rounded-lg p-2" style="${(pet.lifespan !== undefined && pet.lifespan < 99999 && pet.lifespan < 50) ? 'border:1px solid #ef4444;' : ''}">
+          <span class="text-secondary">寿命：</span>
+          ${pet.isDivineBeast ? '<span class="text-purple-400 font-bold">永生</span>' :
+            (pet.lifespan !== undefined ?
+              '<span class="' + (pet.lifespan < 50 ? 'text-red-400 font-bold' : pet.lifespan < 500 ? 'text-yellow-400' : 'text-green-400') + '">' + pet.lifespan + '</span>' +
+              (pet.lifespan < 50 ? ' <span class="text-xs text-red-400">(无法参战)</span>' : '')
+              : '<span class="text-secondary">未知</span>')
+          }
+        </div>
+        <div class="bg-panel rounded-lg p-2"><span class="text-secondary">${pet.isDivineBeast ? '类型：神兽' : '类型：普通'}</span></div>
       </div>
       ${(() => {
         var cp = getCombatPowerBreakdown(pet);
@@ -2246,7 +2262,7 @@ function renderShopScreen() {
             // 定义各分类的道具ID集合
             var ticketIds = ['exp_ticket','gold_ticket','egg_ticket','forge_ticket','map_ticket','gem_ticket','blood_dungeon_ticket'];
             var forgeIds = ['forge_stone_low','forge_stone_mid','forge_stone_high','protection_stone','socket_nail','repair_glue','refine_stone'];
-            var petIds = ['hatch_boost','hatch_crystal','hatch_stone','fusion_stone','moon_dew','rare_egg','yuanxiao_str','yuanxiao_con','yuanxiao_agi','yuanxiao_int','guiyuan_pill','guixu_pill','refine_essence','refine_crystal'];
+            var petIds = ['hatch_boost','hatch_crystal','hatch_stone','fusion_stone','moon_dew','rare_egg','yuanxiao_str','yuanxiao_con','yuanxiao_agi','yuanxiao_int','guiyuan_pill','guixu_pill','refine_essence','refine_crystal','divine_essence','lifespan_low','lifespan_mid','lifespan_high'];
             var expIds = ['exp_book','exp_book_mid','exp_book_high','exp_book_bulk','exp_card_2x','exp_card_5x','exp_card_10x','gold_card_2x','gold_card_5x','gold_card_10x','lucky_charm'];
             var goldIds = ['gold_chest_s','gold_chest_m','gold_chest_l'];
             var filteredItems = SHOP_ITEMS.filter(function(item) {
@@ -3189,11 +3205,16 @@ function renderDexScreen() {
   if (typeof FUSION_ONLY_PETS !== 'undefined') {
     allDisplayNames = allDisplayNames.concat(FUSION_ONLY_PETS);
   }
+  // BUG修复：神兽未加入展示列表，导致图鉴中神兽分类为空
+  if (typeof DIVINE_BEASTS !== 'undefined') {
+    allDisplayNames = allDisplayNames.concat(DIVINE_BEASTS);
+  }
   // 顶部Tab切换
   var tabsHtml = (function() {
     var tabs = [
       { id: 'pets', label: '🐾 宠物图鉴' },
       { id: 'races', label: '💠 种族值' },
+      { id: 'evolve', label: '🔄 进阶图鉴' },
     ];
     return '<div class="bg-card border border-game rounded-xl p-1 flex gap-1">' + tabs.map(function(t) {
       var active = dexTab === t.id;
@@ -3206,9 +3227,9 @@ function renderDexScreen() {
     var raceRowsHtml = RACES.map(function(race) {
       var rv = getRaceValues(race);
       var total = (rv.力量 + rv.体质 + rv.敏捷 + rv.智力).toFixed(1);
-      var bloodline = BLOODLINE_SKILLS.find(function(b) { return b.race === race; });
-      var bsName = bloodline ? bloodline.name : '—';
-      var bsDesc = bloodline ? (bloodline.desc || '') : '';
+      // 血统重构：不再使用种族通用血统，显示提示即可
+      var bsName = '专属血统';
+      var bsDesc = '每只宠物拥有独立专属血统，详见宠物详情';
       var raceColor = RARITY_COLORS[RACES.indexOf(race)] || '#fff';
       // 各属性条：以最大值2.5为满格
       var maxRv = 2.5;
@@ -3246,6 +3267,119 @@ function renderDexScreen() {
         <p class="mt-1">例如：力量种族值越高，该种族宠物在力量属性上每级获得的加成越多。</p>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">${raceRowsHtml}</div>
+    </main>
+  </div>`;
+  }
+
+  // ===== 进阶图鉴 Tab =====
+  if (dexTab === 'evolve') {
+    // 收集所有可进阶宠物（PET_DEX 中 evolvable=true 的条目）
+    var evolvablePets = [];
+    Object.keys(PET_DEX).forEach(function(name) {
+      var d = PET_DEX[name];
+      if (d && d.evolvable && d.evolveChain && d.evolveChain.length >= 2) {
+        evolvablePets.push(name);
+      }
+    });
+    // 按 evolveType 分组（T1 / T3）
+    var t1Chains = evolvablePets.filter(function(n) { return PET_DEX[n].evolveType === 'T1'; });
+    var t3Chains = evolvablePets.filter(function(n) { return PET_DEX[n].evolveType === 'T3'; });
+    // 排序
+    t1Chains.sort(function(a, b) { return a.localeCompare(b, 'zh'); });
+    t3Chains.sort(function(a, b) { return a.localeCompare(b, 'zh'); });
+
+    // 渲染单条进阶链
+    function renderEvolveChain(baseName) {
+      var baseDex = PET_DEX[baseName];
+      var chain = baseDex.evolveChain;
+      var stageDivs = [];
+      // 遍历进阶链各阶段，构建展示卡片
+      for (var k = 0; k < chain.length; k++) {
+        var dex2 = getPetDex(chain[k]);
+        var tier2 = getPetTier(chain[k]);
+        var tierLabel2 = (typeof getPetTierLabel === 'function') ? getPetTierLabel(chain[k]) : 'T' + tier2;
+        var tierColor2 = tier2 === 5 ? '#ef4444' : tier2 === 4 ? '#fb923c' : tier2 === 3 ? '#a855f7' : tier2 === 2 ? '#3b82f6' : '#22c55e';
+        var raceColor2 = RARITY_COLORS[RACES.indexOf(dex2.race)] || '#94a3b8';
+        var specIcon2 = (typeof SPECIALTY_ICONS !== 'undefined' && SPECIALTY_ICONS[dex2.specialty]) || '⚖️';
+        var specName2 = (typeof SPECIALTY_NAMES !== 'undefined' && SPECIALTY_NAMES[dex2.specialty]) || '均衡型';
+        var maxSkills2 = getPetMaxSkills(chain[k]);
+        var aptSummary2 = APTITUDE_KEYS.map(function(key) {
+          var r = dex2.aptRange[key] || [1200, 1800];
+          var sn = key.replace('资质', '');
+          return '<span class="text-xs text-secondary">' + sn + ' ' + r[0] + '-' + r[1] + '</span>';
+        }).join(' <span class="text-secondary">|</span> ');
+        var innateHtml2 = '';
+        if (dex2.innateSkills && dex2.innateSkills.length > 0) {
+          innateHtml2 = dex2.innateSkills.map(function(sid) {
+            var sk = (typeof ALL_SKILLS !== 'undefined') ? ALL_SKILLS.find(function(s) { return s.id === sid; }) : null;
+            return sk ? '<span class="text-xs text-yellow-400 mr-1">★' + sk.name + '</span>' : '<span class="text-xs text-yellow-400 mr-1">★' + sid + '</span>';
+          }).join('');
+        } else {
+          innateHtml2 = '<span class="text-xs text-secondary">随机</span>';
+        }
+        var stageLabel2 = k === 0 ? '基础形态' : (k === 1 ? '一阶进化' : '二阶进化');
+        var stageColor2 = k === 0 ? '#22c55e' : k === 1 ? '#a855f7' : '#ef4444';
+        stageDivs.push('<div class="bg-card border rounded-xl p-3" style="border-color:' + stageColor2 + '44;flex:1;min-width:180px;">' +
+          '<div class="flex items-center justify-between mb-1">' +
+          '<div>' +
+          '<p class="font-bold text-sm" style="color:' + stageColor2 + '">' + chain[k] + '</p>' +
+          '<p class="text-xs" style="color:' + raceColor2 + '">' + dex2.race + ' · ' + specIcon2 + ' ' + specName2 + '</p>' +
+          '</div>' +
+          '<div class="text-right">' +
+          '<span class="text-xs font-black px-2 py-1 rounded" style="background:' + tierColor2 + '22;color:' + tierColor2 + ';border:1px solid ' + tierColor2 + '">' + tierLabel2 + '</span>' +
+          '<p class="text-xs mt-0.5" style="color:' + stageColor2 + '">' + stageLabel2 + '</p>' +
+          '</div>' +
+          '</div>' +
+          '<div class="text-xs mb-1"><span class="text-secondary">成长：</span><span class="text-gold">' + dex2.growthRange[0].toFixed(2) + ' ~ ' + dex2.growthRange[1].toFixed(2) + '</span></div>' +
+          '<div class="text-xs mb-1"><span class="text-secondary">满技能：</span><span class="text-blue-400 font-bold">' + maxSkills2 + '</span> ' + innateHtml2 + '</div>' +
+          '<div class="text-xs"><span class="text-secondary">资质：</span>' + aptSummary2 + '</div>' +
+          '</div>');
+      }
+      // 插入箭头
+      var finalHtml = '';
+      for (var m = 0; m < stageDivs.length; m++) {
+        finalHtml += stageDivs[m];
+        if (m < stageDivs.length - 1) {
+          var avMax = (m === 0) ? EVOLVE_SYSTEM_CONFIG.ADVANCE_VALUE_MAX_T1_TO_T3 : EVOLVE_SYSTEM_CONFIG.ADVANCE_VALUE_MAX_T3_TO_T5;
+          finalHtml += '<div class="flex flex-col items-center justify-center px-1"><span class="text-lg">⬇️</span><span class="text-xs text-secondary mt-0.5">进阶值 ' + avMax + '</span></div>';
+        }
+      }
+      return '<div class="bg-panel border border-game rounded-xl p-3">' +
+        '<div class="flex flex-wrap items-stretch gap-1">' + finalHtml + '</div>' +
+        '<div class="mt-2 pt-2 border-t border-game/40 text-xs text-secondary">' +
+        '<span>📦 进阶道具：</span>' +
+        '<span class="text-green-400">低级进化晶石(15点)</span> | ' +
+        '<span class="text-blue-400">中级进化晶石(50点)</span> | ' +
+        '<span class="text-purple-400">高级进化晶石(150点)</span>' +
+        '<span class="ml-2 text-yellow-400">（使用时有概率触发2~9倍暴击）</span>' +
+        '</div>' +
+        '</div>';
+    }
+
+    var t1Html = t1Chains.map(renderEvolveChain).join('');
+    var t3Html = t3Chains.map(renderEvolveChain).join('');
+
+    return `
+  <div class="min-h-screen flex flex-col">
+    <header class="bg-panel border-b border-game px-4 py-3 flex items-center justify-between">
+      <h1 class="font-fantasy text-gold text-lg">📖 图鉴</h1>
+      <span class="text-sm text-secondary">进阶图鉴</span>
+    </header>
+    <nav class="bg-panel border-b border-game px-2 py-2 flex flex-wrap gap-1 overflow-x-auto">${renderNav()}</nav>
+    <main class="flex-1 p-4 max-w-5xl mx-auto w-full space-y-3">
+      ${tabsHtml}
+      <div class="bg-card border border-game rounded-xl p-3 text-xs text-secondary">
+        <p>💡 可进阶宠物通过使用进化晶石积累进阶值，满值后自动进阶。每次进阶成长和资质提升30%，T5级解锁6技能格。</p>
+        <p class="mt-1">T1可进阶宠物可进阶2次（T1→T3→T5），T3可进阶宠物可进阶1次（T3→T5）。</p>
+      </div>
+      <div class="bg-card border border-game rounded-xl p-3">
+        <h2 class="font-bold text-sm text-green-400 mb-2">🌱 T1可进阶宠物（${t1Chains.length}只 · 可进阶2次 T1→T3→T5）</h2>
+        <div class="space-y-3">${t1Html}</div>
+      </div>
+      <div class="bg-card border border-game rounded-xl p-3">
+        <h2 class="font-bold text-sm text-purple-400 mb-2">⚡ T3可进阶宠物（${t3Chains.length}只 · 可进阶1次 T3→T5）</h2>
+        <div class="space-y-3">${t3Html}</div>
+      </div>
     </main>
   </div>`;
   }
@@ -3412,13 +3546,10 @@ function renderDexScreen() {
                 bSkill = generatePetBloodlineSkill(synthPet);
               }
               if (!bSkill) {
-                // 需求1：兜底优先使用 PET_BLOODLINE_DEX 专属血统名称，避免回退到种族通用血统
-                var dexEntry = (typeof PET_BLOODLINE_DEX !== 'undefined') ? PET_BLOODLINE_DEX[name] : null;
-                if (dexEntry) {
-                  bSkill = { name: dexEntry.name, desc: dexEntry.desc, type: 'bloodline', effects: {} };
-                } else if (typeof FUSION_PET_BLOODLINES !== 'undefined' && FUSION_PET_BLOODLINES[name]) {
-                  var bId = FUSION_PET_BLOODLINES[name];
-                  bSkill = BLOODLINE_SKILLS.find(function(b) { return b.id === bId; });
+                // 兜底：PET_BLOODLINE_DEX 已在 config.js 中清理为 null，改用 PET_BLOOD_ALL 统一数据源
+                var bloodData = (typeof PET_BLOOD_ALL !== 'undefined') ? PET_BLOOD_ALL[name] : null;
+                if (bloodData) {
+                  bSkill = { name: bloodData.name, desc: bloodData.desc, type: 'bloodline', effects: bloodData.effects || {} };
                 }
               }
               if (!bSkill) return '';
@@ -4641,7 +4772,7 @@ function renderInventoryScreen() {
             var slice = items.slice(start, start + pg.pageSize);
             return slice.map(item => {
             const shopItem = SHOP_ITEMS.find(s => s.id === item.id);
-            const icon = shopItem ? shopItem.icon : (item.id === 'moon_dew' ? '🌙' : '📦');
+            const icon = shopItem ? shopItem.icon : (item.id === 'moon_dew' ? '🌙' : item.id === 'divine_essence' ? '✨' : '📦');
             const sp = getItemSellPrice(item.id);
             const curIcon = sp && sp.currency === 'diamond' ? '💎' : '🪙';
             return `
@@ -4653,6 +4784,8 @@ function renderInventoryScreen() {
               ${item.id === 'hatch_boost' ? `<button class="btn-primary btn-sm mt-2 w-full" onclick="useHatchBoost()">使用</button>` : ''}
               ${item.id === 'moon_dew' ? `<button class="btn-gold btn-sm mt-2 w-full" onclick="useMoonDew()">🌙 使用</button>` : ''}
               ${item.id === 'dig_map' ? `<button class="btn-gold btn-sm mt-2 w-full" onclick="startDigSession()">🗺️ 开始挖宝</button>` : ''}
+              ${item.id === 'divine_essence' ? `<button class="btn-gold btn-sm mt-2 w-full" onclick="useDivineEssenceExchange()">✨ 兑换神兽</button>` : ''}
+              ${(item.id === 'lifespan_low' || item.id === 'lifespan_mid' || item.id === 'lifespan_high') ? `<button class="btn-gold btn-sm mt-2 w-full" onclick="showLifespanItemModal('${item.id}')">💊 使用</button>` : ''}
               ${sp ? `<div class="flex gap-1 mt-2">
                 <button class="btn-primary btn-sm flex-1 text-xs" onclick="sellInventoryItem('${item.id}',1)">出售1</button>
                 <button class="btn-gold btn-sm flex-1 text-xs" onclick="sellInventoryItemAll('${item.id}')" ${item.count <= 1 ? 'disabled style="opacity:0.5"' : ''}>全部</button>
@@ -5337,47 +5470,322 @@ function renderTowerScreen() {
   </div>`;
 }
 
-function renderRebirthScreen() {
-  const canRB = canRebirth();
-  return `
-  <div class="min-h-screen flex flex-col">
-    <header class="bg-panel border-b border-game px-4 py-3">
-      <h1 class="font-fantasy text-gold text-lg">🔄 转生</h1>
-    </header>
-    <nav class="bg-panel border-b border-game px-2 py-2 flex flex-wrap gap-1 overflow-x-auto">${renderNav()}</nav>
-    <main class="flex-1 p-4 max-w-5xl mx-auto w-full">
-      <div class="bg-card border border-game rounded-xl p-6 text-center max-w-md mx-auto">
-        <div class="text-6xl mb-4">🔄</div>
-        <h2 class="font-bold text-xl mb-2">转生系统</h2>
-        <p class="text-secondary mb-1">当前转生次数：<span class="text-gold font-bold">${G.player.rebirth}</span></p>
-        <p class="text-secondary mb-1">等级上限：<span class="text-gold font-bold">${G.player.maxLevel}</span></p>
-        <p class="text-secondary mb-1">当前等级：<span class="font-bold">${G.player.level}</span></p>
-        <p class="text-secondary mb-3">战力加成：<span class="text-green-400">+${G.player.rebirth * 15}%</span></p>
-        ${canRB ? `
-          <div class="bg-yellow-900/30 border border-yellow-700 rounded-lg p-3 mb-3">
-            <p class="text-sm text-yellow-400">⚠️ 转生后等级重置为1，宠物等级也重置为1</p>
-            <p class="text-sm text-yellow-400">等级上限提升至 ${G.player.maxLevel + 10}</p>
-            <p class="text-sm text-yellow-400">战力永久提升 15%</p>
-            <p class="text-sm text-cyan-400">🌟 转生后已获得天赋点的等级不重复发放，只有突破新等级上限（${G.player.maxLevel + 1}~${G.player.maxLevel + 10}级）才获得新天赋点</p>
-          </div>
-          <button class="btn-gold text-lg px-8 py-3" onclick="doRebirthUI()">✨ 转生</button>
-        ` : `
-          <p class="text-secondary">需要达到 ${G.player.maxLevel} 级才能转生</p>
-          <div class="progress-bar mt-2"><div class="progress-fill bg-gradient-to-r from-purple-500 to-blue-500" style="width:${Math.floor(G.player.level/G.player.maxLevel*100)}%"></div></div>
-          <p class="text-xs text-secondary mt-1">${G.player.level}/${G.player.maxLevel}</p>
-        `}
-        <div class="mt-4 p-3 bg-panel rounded-lg text-left text-xs text-secondary space-y-1">
-          <p>📌 转生规则：</p>
-          <p>· 满级后可转生，等级上限+10</p>
-          <p>· 每次转生战力永久提升15%</p>
-          <p>· 宠物等级跟随人物重置为1</p>
-          <p>· 出战宠物保留，无需重新获取</p>
-          <p>· 转生后升级速度更快</p>
-          <p>· 🌟 已获得天赋点的等级转生后不重复发放，仅突破新等级上限才给天赋点</p>
-        </div>
-      </div>
-    </main>
-  </div>`;
+function renderSamsaraScreen() {
+  var samsara = G.samsara || { currentFloor: 0, maxFloorCleared: 0, reincarnationPoints: 0, inChallenge: false, divinePowers: {} };
+  var unlocked = (typeof isSamsaraUnlocked === 'function') ? isSamsaraUnlocked() : (G.player.level >= 70 || G.player.rebirth > 0);
+  var canRB = (typeof canRebirth === 'function') ? canRebirth() : false;
+  var samsaraTab = window._samsaraTab || 'tower';
+  
+  var tabs = [
+    { id: 'tower', label: '轮回之塔', icon: '🗼' },
+    { id: 'gacha', label: '神通抽奖', icon: '🎰' },
+    { id: 'powers', label: '我的神通', icon: '✨' },
+  ];
+  var tabsHtml = tabs.map(function(t) {
+    var active = samsaraTab === t.id;
+    return '<button class="text-xs px-3 py-1 rounded border ' + (active ? 'bg-purple-900 text-purple-300 border-purple-500 font-bold' : 'border-game text-secondary') + '" onclick="window._samsaraTab=\'' + t.id + '\';render()">' + t.icon + ' ' + t.label + '</button>';
+  }).join('');
+
+  var contentHtml = '';
+  
+  if (!unlocked) {
+    contentHtml = '<div class="bg-card border border-game rounded-xl p-6 text-center max-w-md mx-auto">' +
+      '<div class="text-6xl mb-4">🔒</div>' +
+      '<h2 class="font-bold text-xl mb-2 text-yellow-400">六道轮回</h2>' +
+      '<p class="text-secondary mb-4">需要达到 <span class="text-gold font-bold">' + SAMSARA_UNLOCK_LEVEL + '级</span> 才能参与六道轮回活动</p>' +
+      '<div class="progress-bar mt-2"><div class="progress-fill bg-gradient-to-r from-purple-500 to-blue-500" style="width:' + Math.floor(G.player.level / SAMSARA_UNLOCK_LEVEL * 100) + '%"></div></div>' +
+      '<p class="text-xs text-secondary mt-1">' + G.player.level + '/' + SAMSARA_UNLOCK_LEVEL + '</p>' +
+    '</div>';
+  } else if (samsaraTab === 'tower') {
+    // ===== 轮回之塔 =====
+    var nextFloor = samsara.currentFloor + 1;
+    var nextFloorData = (typeof getSamsaraFloorData === 'function') ? getSamsaraFloorData(nextFloor) : null;
+    var potentialPoints = (typeof calcSamsaraPoints === 'function') ? calcSamsaraPoints(nextFloor) : 0;
+    var canSettle = samsara.currentFloor >= SAMSARA_REBIRTH_MIN_FLOOR && G.player.level >= G.player.maxLevel;
+    var canSettleMsg = '';
+    if (samsara.currentFloor < SAMSARA_REBIRTH_MIN_FLOOR) {
+      canSettleMsg = '需通关至少' + SAMSARA_REBIRTH_MIN_FLOOR + '层（当前' + samsara.currentFloor + '层）';
+    } else if (G.player.level < G.player.maxLevel) {
+      canSettleMsg = '需达到等级上限' + G.player.maxLevel + '级（当前' + G.player.level + '级）';
+    }
+    
+    contentHtml = '<div class="space-y-4">' +
+      // 状态面板
+      '<div class="bg-card border border-purple-700 rounded-xl p-4">' +
+        '<div class="grid grid-cols-2 gap-3 text-sm">' +
+          '<div class="bg-panel rounded-lg p-2 text-center"><p class="text-secondary text-xs">当前层数</p><p class="text-gold font-bold text-lg">' + samsara.currentFloor + '</p></div>' +
+          '<div class="bg-panel rounded-lg p-2 text-center"><p class="text-secondary text-xs">最高通关</p><p class="text-purple-400 font-bold text-lg">' + samsara.maxFloorCleared + '层</p></div>' +
+          '<div class="bg-panel rounded-lg p-2 text-center"><p class="text-secondary text-xs">轮回积分</p><p class="text-cyan-400 font-bold text-lg">' + (samsara.reincarnationPoints || 0) + '</p></div>' +
+          '<div class="bg-panel rounded-lg p-2 text-center"><p class="text-secondary text-xs">转生次数</p><p class="text-gold font-bold text-lg">' + G.player.rebirth + '</p></div>' +
+        '</div>' +
+      '</div>' +
+      
+      // 挑战面板
+      '<div class="bg-card border border-game rounded-xl p-4">' +
+        (samsara.inChallenge ?
+          // 挑战中
+          '<h3 class="font-bold text-lg mb-2 text-purple-400">🌀 挑战进行中</h3>' +
+          '<p class="text-sm text-secondary mb-3">当前层数：<span class="text-gold font-bold">' + samsara.currentFloor + '</span> · 下一层：<span class="text-purple-400 font-bold">第' + nextFloor + '层</span></p>' +
+          (nextFloorData ? '<div class="bg-panel rounded-lg p-3 mb-3 text-xs space-y-1">' +
+            '<p><span class="text-secondary">守卫名称：</span>' + nextFloorData.name + '</p>' +
+            '<p><span class="text-secondary">气血：</span><span class="text-red-400">' + nextFloorData.hp.toLocaleString() + '</span></p>' +
+            '<p><span class="text-secondary">攻击：</span><span class="text-orange-400">' + nextFloorData.atk.toLocaleString() + '</span></p>' +
+            '<p><span class="text-secondary">防御：</span><span class="text-gray-300">' + nextFloorData.def.toLocaleString() + '</span></p>' +
+            '<p><span class="text-secondary">奖励：</span><span class="text-yellow-400">🪙' + nextFloorData.gold.toLocaleString() + '</span> <span class="text-green-400">⭐' + nextFloorData.exp.toLocaleString() + '经验</span></p>' +
+            (potentialPoints > 0 ? '<p><span class="text-secondary">若结算可获：</span><span class="text-cyan-400 font-bold">' + potentialPoints + ' 轮回积分</span></p>' : '') +
+          '</div>' : '') +
+          '<div class="flex gap-2 flex-wrap">' +
+            '<button class="btn-primary px-4 py-2" onclick="doSamsaraBattle()">⚔️ 挑战第' + nextFloor + '层</button>' +
+            (canSettle ?
+              '<button class="btn-gold px-4 py-2" onclick="confirmSamsaraSettle()">✨ 结算转生</button>' :
+              '<button class="btn-primary px-4 py-2 opacity-50 cursor-not-allowed" disabled title="' + canSettleMsg + '">✨ 结算转生</button>'
+            ) +
+            '<button class="btn-sm px-4 py-2 border border-game text-secondary" onclick="quitSamsaraChallenge()">🚪 退出挑战</button>' +
+          '</div>' +
+          (canSettle ? '<p class="text-xs text-yellow-400 mt-2">✅ 当前可结算转生！将获得 <span class="font-bold">' + (typeof calcSamsaraPoints === 'function' ? calcSamsaraPoints(samsara.currentFloor) : 0) + ' 轮回积分</span></p>' :
+            (samsara.currentFloor >= SAMSARA_REBIRTH_MIN_FLOOR ? '<p class="text-xs text-green-400 mt-2">✅ 已通关' + SAMSARA_REBIRTH_MIN_FLOOR + '层，达到转生最低门槛。继续挑战可获得更多积分，或达到满级后结算转生。</p>' :
+              '<p class="text-xs text-secondary mt-2">通关' + SAMSARA_REBIRTH_MIN_FLOOR + '层后可结算转生（还差' + (SAMSARA_REBIRTH_MIN_FLOOR - samsara.currentFloor) + '层）</p>'))
+        :
+          // 未在挑战中
+          '<h3 class="font-bold text-lg mb-2 text-purple-400">🗼 轮回之塔</h3>' +
+          '<p class="text-sm text-secondary mb-3">无限波次爬塔挑战，每层怪物属性逐层递增。通关' + SAMSARA_REBIRTH_MIN_FLOOR + '层后可结算转生并获得轮回积分。</p>' +
+          '<div class="bg-panel rounded-lg p-3 mb-3 text-xs text-secondary space-y-1">' +
+            '<p>📌 挑战规则：</p>' +
+            '<p>· 无限层数，无次数限制，可随时进入挑战</p>' +
+            '<p>· 中途可主动退出，战斗失败自动终止当前挑战</p>' +
+            '<p>· 通关≥' + SAMSARA_REBIRTH_MIN_FLOOR + '层且达到满级后可结算转生</p>' +
+            '<p>· 结算转生后按基础规则重置成长线，并获得轮回积分</p>' +
+            '<p>· 轮回积分可在「神通抽奖」中消耗，抽取宠物神通</p>' +
+          '</div>' +
+          '<button class="btn-primary px-6 py-3" onclick="startSamsaraUI()">🌀 开始挑战</button>' +
+          (samsara.maxFloorCleared > 0 ? '<p class="text-xs text-secondary mt-2">上次最高通关：' + samsara.maxFloorCleared + '层</p>' : '')
+        ) +
+      '</div>' +
+      
+      // 战斗日志区域
+      (window._samsaraBattleLog ? '<div class="bg-card border border-game rounded-xl p-4"><h3 class="font-bold text-sm mb-2 text-secondary">📜 战斗日志</h3><div class="bg-panel rounded p-2 text-xs space-y-1 max-h-40 overflow-y-auto">' + window._samsaraBattleLog + '</div></div>' : '') +
+    '</div>';
+    
+  } else if (samsaraTab === 'gacha') {
+    // ===== 神通抽奖 =====
+    var ownedCount = Object.keys(samsara.divinePowers || {}).length;
+    var totalCount = (typeof DIVINE_POWERS !== 'undefined') ? DIVINE_POWERS.length : 20;
+    
+    contentHtml = '<div class="space-y-4">' +
+      '<div class="bg-card border border-purple-700 rounded-xl p-4 text-center">' +
+        '<div class="text-5xl mb-2">🎰</div>' +
+        '<h3 class="font-bold text-lg mb-1 text-purple-400">神通抽奖</h3>' +
+        '<p class="text-sm text-secondary mb-3">消耗轮回积分抽取神通，重复获得自动升星</p>' +
+        '<p class="text-lg mb-3">轮回积分：<span class="text-cyan-400 font-bold text-xl">' + (samsara.reincarnationPoints || 0) + '</span></p>' +
+        '<div class="flex gap-2 justify-center">' +
+          '<button class="btn-primary px-4 py-2" onclick="doSamsaraGacha(1)" ' + ((samsara.reincarnationPoints || 0) < SAMSARA_GACHA_COST ? 'disabled style="opacity:0.5;cursor:not-allowed"' : '') + '>单抽 (' + SAMSARA_GACHA_COST + '积分)</button>' +
+          '<button class="btn-gold px-4 py-2" onclick="doSamsaraGacha(10)" ' + ((samsara.reincarnationPoints || 0) < SAMSARA_GACHA_COST * 10 ? 'disabled style="opacity:0.5;cursor:not-allowed"' : '') + '>十连 (' + (SAMSARA_GACHA_COST * 10) + '积分)</button>' +
+        '</div>' +
+        '<p class="text-xs text-secondary mt-2">已收集：' + ownedCount + '/' + totalCount + '</p>' +
+      '</div>' +
+      
+      // 概率展示
+      '<div class="bg-card border border-game rounded-xl p-4">' +
+        '<h3 class="font-bold text-sm mb-2 text-secondary">📊 抽奖概率</h3>' +
+        '<div class="grid grid-cols-4 gap-2 text-xs">' +
+          '<div class="bg-panel rounded p-2 text-center"><p class="text-blue-400 font-bold">稀有</p><p class="text-secondary">50%</p></div>' +
+          '<div class="bg-panel rounded p-2 text-center"><p class="text-purple-400 font-bold">史诗</p><p class="text-secondary">30%</p></div>' +
+          '<div class="bg-panel rounded p-2 text-center"><p class="text-yellow-400 font-bold">传说</p><p class="text-secondary">15%</p></div>' +
+          '<div class="bg-panel rounded p-2 text-center"><p class="text-red-400 font-bold">神话</p><p class="text-secondary">5%</p></div>' +
+        '</div>' +
+      '</div>' +
+      
+      // 神通图鉴
+      '<div class="bg-card border border-game rounded-xl p-4">' +
+        '<h3 class="font-bold text-sm mb-2 text-secondary">📖 全部神通 (' + totalCount + '种)</h3>' +
+        '<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">' +
+          ((typeof DIVINE_POWERS !== 'undefined') ? DIVINE_POWERS.map(function(p) {
+            var owned = samsara.divinePowers && samsara.divinePowers[p.id];
+            var star = owned ? (owned.star || 1) : 0;
+            var rarityColor = { rare: '#3b82f6', epic: '#a855f7', legendary: '#f59e0b', mythic: '#ef4444' }[p.rarity] || '#9ca3af';
+            var rarityName = { rare: '稀有', epic: '史诗', legendary: '传说', mythic: '神话' }[p.rarity] || p.rarity;
+            var starHtml = '';
+            for (var s = 0; s < star; s++) starHtml += '⭐';
+            return '<div class="bg-panel rounded-lg p-2 border ' + (owned ? '' : 'opacity-40') + '" style="border-color:' + rarityColor + '33">' +
+              '<div class="flex items-center justify-between">' +
+                '<span class="text-sm font-bold" style="color:' + rarityColor + '">' + p.icon + ' ' + p.name + '</span>' +
+                '<span class="text-xs px-1 rounded" style="background:' + rarityColor + '22;color:' + rarityColor + '">' + rarityName + '</span>' +
+              '</div>' +
+              '<p class="text-xs text-secondary mt-1">' + p.desc + '</p>' +
+              (owned ? '<p class="text-xs text-yellow-400 mt-1">' + starHtml + ' (' + star + '星)</p>' : '<p class="text-xs text-secondary mt-1">未拥有</p>') +
+            '</div>';
+          }).join('') : '') +
+        '</div>' +
+      '</div>' +
+    '</div>';
+    
+  } else if (samsaraTab === 'powers') {
+    // ===== 我的神通 =====
+    var ownedPowers = [];
+    if (samsara.divinePowers) {
+      for (var pid in samsara.divinePowers) {
+        var eff = (typeof getDivinePowerEffect === 'function') ? getDivinePowerEffect(pid) : null;
+        if (eff) ownedPowers.push(eff);
+      }
+    }
+    
+    contentHtml = '<div class="space-y-4">' +
+      '<div class="bg-card border border-purple-700 rounded-xl p-4">' +
+        '<h3 class="font-bold text-lg mb-2 text-purple-400">✨ 已拥有神通</h3>' +
+        '<p class="text-sm text-secondary mb-3">共 ' + ownedPowers.length + ' 种神通，所有神通效果自动应用于出战宠物</p>' +
+        (ownedPowers.length === 0 ?
+          '<div class="text-center py-8"><div class="text-4xl mb-2 opacity-40">🎲</div><p class="text-secondary text-sm">暂无神通，前往「神通抽奖」抽取</p></div>' :
+          '<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">' +
+            ownedPowers.map(function(eff) {
+              var rarityColor = { rare: '#3b82f6', epic: '#a855f7', legendary: '#f59e0b', mythic: '#ef4444' }[eff.rarity] || '#9ca3af';
+              var rarityName = { rare: '稀有', epic: '史诗', legendary: '传说', mythic: '神话' }[eff.rarity] || eff.rarity;
+              var starHtml = '';
+              for (var s = 0; s < eff.star; s++) starHtml += '⭐';
+              var currentValue = (eff.effect.value * 100).toFixed(0);
+              var isPercent = ['atkPct','defPct','spdPct','intPct','hpPct','mpPct','allPct','skillDmg','regenPct','defIgnore','critRate','dodgeRate','dmgReduce','vampPct','critDmg','stunChance','extraAtk'].indexOf(eff.effect.type) >= 0;
+              var effectStr = isPercent ? '+' + currentValue + '%' : '+' + eff.effect.value;
+              return '<div class="bg-panel rounded-lg p-3 border" style="border-color:' + rarityColor + '55">' +
+                '<div class="flex items-center justify-between mb-1">' +
+                  '<span class="font-bold" style="color:' + rarityColor + '">' + eff.icon + ' ' + eff.name + '</span>' +
+                  '<span class="text-xs px-1 rounded" style="background:' + rarityColor + '22;color:' + rarityColor + '">' + rarityName + '</span>' +
+                '</div>' +
+                '<p class="text-xs text-secondary">' + eff.desc + '</p>' +
+                '<div class="flex items-center justify-between mt-1">' +
+                  '<span class="text-xs text-yellow-400">' + starHtml + '</span>' +
+                  '<span class="text-xs text-green-400 font-bold">当前效果：' + effectStr + '</span>' +
+                '</div>' +
+              '</div>';
+            }).join('') +
+          '</div>'
+        ) +
+      '</div>' +
+      '<div class="bg-panel border border-game rounded-xl p-3 text-xs text-secondary space-y-1">' +
+        '<p class="font-bold text-secondary">📌 神通规则</p>' +
+        '<p>· 神通效果自动应用于所有出战宠物</p>' +
+        '<p>· 重复抽取到已拥有的神通时，自动提升星级</p>' +
+        '<p>· 星级提升后基础效果翻倍增长（1星→2星×2，2星→3星×4...）</p>' +
+        '<p>· 神通品质越高基础效果越强</p>' +
+      '</div>' +
+    '</div>';
+  }
+  
+  return '\n  <div class="min-h-screen flex flex-col">\n    <header class="bg-panel border-b border-game px-4 py-3 flex items-center justify-between">\n      <h1 class="font-fantasy text-gold text-lg">🌀 六道轮回</h1>\n      <div class="flex gap-3 text-sm items-center">\n        <span class="text-cyan-400">🔄 轮回积分 <span class="font-bold text-lg">' + (samsara.reincarnationPoints || 0) + '</span></span>\n        <span class="text-secondary">| 转生 ' + G.player.rebirth + '</span>\n      </div>\n    </header>\n    <nav class="bg-panel border-b border-game px-2 py-2 flex flex-wrap gap-1 overflow-x-auto">' + renderNav() + '</nav>\n    <div class="bg-panel border-b border-game px-2 py-2 flex gap-1">' + tabsHtml + '</div>\n    <main class="flex-1 p-4 max-w-5xl mx-auto w-full">\n      ' + contentHtml + '\n    </main>\n  </div>';
+}
+
+// ==================== 六道轮回 UI 事件处理 ====================
+
+function startSamsaraUI() {
+  if (typeof startSamsaraChallenge !== 'function') {
+    showToast('功能未定义', 'error');
+    return;
+  }
+  var result = startSamsaraChallenge();
+  if (result) {
+    showToast('🌀 六道轮回挑战开始！', 'success');
+    render();
+  }
+}
+
+function doSamsaraBattle() {
+  if (typeof startSamsaraBattle !== 'function') {
+    showToast('功能未定义', 'error');
+    return;
+  }
+  var result = startSamsaraBattle();
+  if (!result) {
+    showToast('挑战失败，请重试', 'error');
+    return;
+  }
+  // 构建战斗日志HTML
+  var logHtml = result.log.map(function(l) { return '<p class="' + (l.indexOf('阵亡') >= 0 ? 'text-red-400' : l.indexOf('暴击') >= 0 ? 'text-yellow-400' : 'text-secondary') + '">' + l + '</p>'; }).join('');
+  window._samsaraBattleLog = logHtml;
+  
+  if (result.victory) {
+    showToast('✅ 通关第' + result.floor + '层！获得 🪙' + (result.rewards ? result.rewards.gold : 0) + ' ⭐' + (result.rewards ? result.rewards.exp : 0) + '经验', 'success');
+  } else {
+    showToast('❌ 第' + result.floor + '层挑战失败！挑战终止', 'error');
+    window._samsaraBattleLog = '<p class="text-red-400 font-bold">挑战失败！第' + result.floor + '层 轮回守卫过于强大</p>' + logHtml;
+  }
+  render();
+}
+
+function quitSamsaraChallenge() {
+  if (!confirm('确定退出当前挑战？退出后可重新开始。')) return;
+  if (typeof samsaraQuitChallenge === 'function') samsaraQuitChallenge();
+  window._samsaraBattleLog = null;
+  showToast('已退出六道轮回挑战', 'info');
+  render();
+}
+
+function confirmSamsaraSettle() {
+  if (!G.samsara || G.samsara.currentFloor < SAMSARA_REBIRTH_MIN_FLOOR) {
+    showToast('需要通关至少' + SAMSARA_REBIRTH_MIN_FLOOR + '层才能结算转生', 'error');
+    return;
+  }
+  var points = (typeof calcSamsaraPoints === 'function') ? calcSamsaraPoints(G.samsara.currentFloor) : 0;
+  if (!confirm('结算转生将执行以下操作：\n\n' +
+    '· 获得轮回积分：' + points + '\n' +
+    '· 角色等级重置为1\n' +
+    '· 宠物等级重置为1\n' +
+    '· 等级上限+10\n' +
+    '· 挑战进度重置\n\n' +
+    '确定结算转生吗？')) return;
+  if (typeof samsaraSettleRebirth === 'function') {
+    var result = samsaraSettleRebirth();
+    if (result) {
+      window._samsaraBattleLog = null;
+      render();
+    }
+  }
+}
+
+function doSamsaraGacha(times) {
+  if (typeof samsaraDivinePowerGacha !== 'function') {
+    showToast('功能未定义', 'error');
+    return;
+  }
+  var results = samsaraDivinePowerGacha(times);
+  if (!results || results.length === 0) return;
+  
+  // 构建抽奖结果弹窗
+  var overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'samsara-gacha-modal';
+  var html = '<div class="modal-content scrollbar-thin" style="max-width:520px;max-height:85vh;">' +
+    '<div class="flex items-center justify-between mb-4">' +
+      '<h2 class="font-bold text-lg text-gold">🎰 神通抽奖结果</h2>' +
+      '<button class="text-secondary hover:text-white text-xl" onclick="closeSamsaraGachaModal()">✕</button>' +
+    '</div>' +
+    '<div class="space-y-2 max-h-[60vh] overflow-y-auto">';
+  
+  results.forEach(function(r) {
+    var rarityColor = { rare: '#3b82f6', epic: '#a855f7', legendary: '#f59e0b', mythic: '#ef4444' }[r.power.rarity] || '#9ca3af';
+    var rarityName = { rare: '稀有', epic: '史诗', legendary: '传说', mythic: '神话' }[r.power.rarity] || r.power.rarity;
+    var starHtml = '';
+    for (var s = 0; s < r.newStar; s++) starHtml += '⭐';
+    html += '<div class="bg-panel rounded-lg p-3 border" style="border-color:' + rarityColor + '55">' +
+      '<div class="flex items-center justify-between">' +
+        '<span class="font-bold text-lg" style="color:' + rarityColor + '">' + r.power.icon + ' ' + r.power.name + '</span>' +
+        '<span class="text-xs px-2 py-1 rounded" style="background:' + rarityColor + '22;color:' + rarityColor + '">' + rarityName + '</span>' +
+      '</div>' +
+      '<p class="text-xs text-secondary mt-1">' + r.power.desc + '</p>' +
+      '<p class="text-xs mt-1">' + (r.isDup ? '<span class="text-yellow-400">🎉 重复获得！升星至 ' + r.newStar + ' 星 ' + starHtml + '</span>' : '<span class="text-green-400">✨ 新获得神通！ ' + starHtml + '</span>') + '</p>' +
+    '</div>';
+  });
+  
+  html += '</div>' +
+    '<button class="btn-gold btn-sm mt-3 w-full" onclick="closeSamsaraGachaModal()">确定</button>' +
+  '</div>';
+  overlay.innerHTML = html;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) closeSamsaraGachaModal(); });
+  
+  render();
+}
+
+function closeSamsaraGachaModal() {
+  var modal = document.getElementById('samsara-gacha-modal');
+  if (modal) modal.remove();
 }
 
 function renderFusionScreen() {
@@ -5387,6 +5795,7 @@ var sheetTabs = [
 { id: 'rebirth', label: '重生', icon: '🔄' },
 { id: 'bloodline', label: '血统', icon: '🔮' },
 { id: 'refine', label: '炼化', icon: '🔥' },
+{ id: 'advance', label: '进阶', icon: '⭐' },
 ];
   var tabsHtml = sheetTabs.map(function(t) {
     var active = sheet === t.id;
@@ -5534,9 +5943,9 @@ var sheetTabs = [
               (blPet.bloodlineOrb ? (
                 '<p class="text-yellow-400 mt-2">💎 已植入血统珠：' +
                   (function() {
-                    // 需求1：显示宠物自身专属血统名称（非种族通用血统）
-                    var petDex = (typeof PET_BLOODLINE_DEX !== 'undefined' && blPet.name) ? PET_BLOODLINE_DEX[blPet.name] : null;
-                    return petDex ? petDex.name : (blPet.name + '之血');
+                    // 显示宠物自身专属血统名称（PET_BLOODLINE_DEX 已清理，使用 PET_BLOOD_ALL）
+                    var petBlood = (typeof PET_BLOOD_ALL !== 'undefined' && blPet.name && PET_BLOOD_ALL[blPet.name]) ? PET_BLOOD_ALL[blPet.name] : null;
+                    return petBlood ? petBlood.name : (blPet.name + '之血');
                   })() + '·' + BLOOD_ORB_QUALITY_NAMES[blPet.bloodlineOrb.quality] +
                   '（来源：' + blPet.bloodlineOrb.sourcePetName + '）</p>' +
                 '<button class="btn-danger text-xs mt-2" onclick="removePetBloodlineOrb(\'' + blPet.id + '\')">取出当前血统珠</button>'
@@ -5574,10 +5983,10 @@ var sheetTabs = [
       contentHtml += '<div class="space-y-2">';
       extractedOrbs.forEach(function(orb) {
         var ob = BLOODLINE_SKILLS.find(function(b) { return b.id === orb.bloodlineId; });
-        // 需求1：优先显示来源宠物的专属血统名称与描述
-        var petDexEntry = (typeof PET_BLOODLINE_DEX !== 'undefined' && orb.sourcePetName) ? PET_BLOODLINE_DEX[orb.sourcePetName] : null;
-        var blName = petDexEntry ? petDexEntry.name : (ob ? ob.name : '未知血统');
-        var blDesc = petDexEntry ? petDexEntry.desc : (ob ? ob.desc : '');
+        // 优先显示来源宠物的专属血统名称与描述（PET_BLOODLINE_DEX 已清理，使用 PET_BLOOD_ALL）
+        var petBloodEntry = (typeof PET_BLOOD_ALL !== 'undefined' && orb.sourcePetName && PET_BLOOD_ALL[orb.sourcePetName]) ? PET_BLOOD_ALL[orb.sourcePetName] : null;
+        var blName = petBloodEntry ? petBloodEntry.name : (ob ? ob.name : '未知血统');
+        var blDesc = petBloodEntry ? petBloodEntry.desc : (ob ? ob.desc : '');
         var qColor = BLOOD_ORB_QUALITY_COLORS[orb.quality] || '#9ca3af';
         var qName = BLOOD_ORB_QUALITY_NAMES[orb.quality] || orb.quality;
         var decompTier = BLOOD_ORB_DECOMPOSE_RULES[orb.quality];
@@ -5613,6 +6022,9 @@ var sheetTabs = [
 } else if (sheet === 'refine') {
 // ===== 需求10：宠物炼化 sheet =====
 contentHtml = renderRefineSheet();
+  } else if (sheet === 'advance') {
+    // ===== 新进阶系统 sheet =====
+    contentHtml = renderAdvanceSheet();
   } else {
     contentHtml = '<div class="bg-card border border-game rounded-xl p-4 mb-4">' +
       '<h2 class="font-bold text-lg mb-3">选择两只宠物进行融合</h2>' +
@@ -6644,6 +7056,7 @@ function renderActivityScreen() {
 { id: 'dispatch', label: '派遣奇遇', icon: '🎒' },     // 派遣系统
 { id: 'fortress', label: '血色要塞', icon: '🏰' },     // 需求5：血色要塞
 { id: 'runecycle', label: '符文循环', icon: '🔮' },     // 符文循环活动
+{ id: 'evoforest', label: '进化森林', icon: '🌲' },     // 进化森林活动
 ];
   var tabsHtml = sheetTabs.map(function(t) {
     var active = sheet === t.id;
@@ -6695,6 +7108,8 @@ contentHtml = renderActivityArena();
     contentHtml = renderActivityCrimsonFortress();
   } else if (sheet === 'runecycle') {
     contentHtml = renderActivityRuneCycle();
+  } else if (sheet === 'evoforest') {
+    contentHtml = renderActivityEvolutionForest();
   }
 
   return `
@@ -8446,8 +8861,14 @@ function selectTeamSlot(slot) {
 }
 
 function assignPetToSlot(petId) {
-  if (selectingTeamSlot < 0) return;
-  const slot = selectingTeamSlot;
+if (selectingTeamSlot < 0) return;
+// 参战限制：寿命<50不可出战（神兽除外）
+const pet = G.pets.find(p => p.id === petId);
+if (pet && !pet.isDivineBeast && pet.lifespan !== undefined && pet.lifespan < 50) {
+showToast('该宠物寿命不足50，无法参与战斗', 'error');
+return;
+}
+const slot = selectingTeamSlot;
   const alreadyInSlot = G.player.activeTeam.indexOf(petId);
   if (alreadyInSlot >= 0 && alreadyInSlot !== slot) {
     G.player.activeTeam[alreadyInSlot] = G.player.activeTeam[slot];
@@ -8529,10 +8950,10 @@ function renderBloodOrbImplantModal() {
     listHtml = '<div class="space-y-2">';
     orbs.forEach(function(orb) {
       var ob = BLOODLINE_SKILLS.find(function(b) { return b.id === orb.bloodlineId; });
-      // 需求1：优先显示来源宠物的专属血统名称与描述
-      var petDexEntry = (typeof PET_BLOODLINE_DEX !== 'undefined' && orb.sourcePetName) ? PET_BLOODLINE_DEX[orb.sourcePetName] : null;
-      var blName = petDexEntry ? petDexEntry.name : (ob ? ob.name : '未知血统');
-      var blDesc = petDexEntry ? petDexEntry.desc : (ob ? ob.desc : '');
+      // 优先显示来源宠物的专属血统名称与描述（PET_BLOODLINE_DEX 已清理，使用 PET_BLOOD_ALL）
+      var petBloodEntry = (typeof PET_BLOOD_ALL !== 'undefined' && orb.sourcePetName && PET_BLOOD_ALL[orb.sourcePetName]) ? PET_BLOOD_ALL[orb.sourcePetName] : null;
+      var blName = petBloodEntry ? petBloodEntry.name : (ob ? ob.name : '未知血统');
+      var blDesc = petBloodEntry ? petBloodEntry.desc : (ob ? ob.desc : '');
       var qColor = (typeof BLOOD_ORB_QUALITY_COLORS !== 'undefined') ? (BLOOD_ORB_QUALITY_COLORS[orb.quality] || '#9ca3af') : '#9ca3af';
       var qName = (typeof BLOOD_ORB_QUALITY_NAMES !== 'undefined') ? (BLOOD_ORB_QUALITY_NAMES[orb.quality] || orb.quality) : orb.quality;
       var canApply = !pet.bloodlineOrb || pet.bloodlineOrb.orbItemId !== orb.id;
@@ -8877,6 +9298,18 @@ function buyShopItem(itemId, price, action, tier, currency) {
   } else if (action === 'exp_book_bulk') {
     const gained = addExp(10000 * 5 * qty);
     showToast(`使用 ${qty} 组经验书包，获得 ${gained.toLocaleString()} 经验！`, 'success');
+  } else if (action === 'divine_essence') {
+    // 神兽精华：直接加入背包
+    var deItem = G.inventory.find(function(i) { return i.id === 'divine_essence'; });
+    if (deItem) deItem.count += qty;
+    else G.inventory.push({ id: 'divine_essence', count: qty });
+    showToast(`购买了 ${qty} 个神兽精华！`, 'success');
+  } else if (action === 'lifespan_item') {
+    // 延寿丹：加入背包，需在宠物详情中使用
+    var lsItem = G.inventory.find(function(i) { return i.id === itemId; });
+    if (lsItem) lsItem.count += qty;
+    else G.inventory.push({ id: itemId, count: qty });
+    showToast(`购买了 ${getItemName(itemId)} x${qty}！前往宠物详情使用`, 'success');
   }
   resetShopQty(itemId);
   saveGame();
@@ -9141,6 +9574,17 @@ function quickAddToTeam(petId) {
 }
 
 function releasePet(petId) {
+  var pet = G.pets.find(function(p) { return p.id === petId; });
+  if (!pet) return;
+  // 神兽放生返还50个神兽精华
+  var isDivine = (typeof isDivineBeastPet === 'function') ? isDivineBeastPet(pet) : pet.isDivineBeast;
+  if (isDivine) {
+    if (!confirm('确定放生神兽【' + getPetDisplayName(pet) + '】？\n放生神兽将返还 50 个神兽精华！')) return;
+    var deItem = G.inventory.find(function(i) { return i.id === 'divine_essence'; });
+    if (deItem) deItem.count += 50;
+    else G.inventory.push({ id: 'divine_essence', count: 50 });
+    showToast('🐉 放生神兽，返还 50 个神兽精华', 'success');
+  }
   G.pets = G.pets.filter(p => p.id !== petId);
   G.player.activeTeam = G.player.activeTeam.map(id => id === petId ? null : id);
   if (autoBattleInterval) {
@@ -9150,7 +9594,7 @@ function releasePet(petId) {
   saveGame();
   render();
   if (liveBattle) setTimeout(() => renderBattleArena(), 50);
-  showToast('宠物已放生', 'info');
+  if (!isDivine) showToast('宠物已放生', 'info');
 }
 
 // ===== 宠物重置（归元丹/归虚丹） =====
@@ -9429,6 +9873,153 @@ function applyMoonDew(petId) {
 
 function closeMoonDewModal() {
   const modal = document.getElementById('moon-dew-modal');
+  if (modal) modal.remove();
+}
+
+// ==================== 宠物寿命系统 ====================
+
+function showLifespanItemModal(itemId) {
+  const itemDef = SHOP_ITEMS.find(i => i.id === itemId);
+  if (!itemDef) return;
+  const inv = G.inventory.find(i => i.id === itemId);
+  if (!inv || inv.count <= 0) { showToast('道具不足！', 'error'); return; }
+  const amounts = { lifespan_low: 500, lifespan_mid: 1000, lifespan_high: 2000 };
+  const amount = amounts[itemId];
+  
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'lifespan-item-modal';
+  overlay.innerHTML = `
+    <div class="modal-content scrollbar-thin" style="max-width:480px;max-height:80vh;">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-bold text-lg text-gold">${itemDef.icon} 使用${itemDef.name}</h2>
+        <button class="text-secondary hover:text-white text-xl" onclick="closeLifespanItemModal()">✕</button>
+      </div>
+      <p class="text-xs text-secondary mb-3">当前拥有：<span class="text-gold font-bold">${inv.count}</span> 个${itemDef.name}</p>
+      <p class="text-xs text-secondary mb-3">效果：为宠物增加 <span class="text-green-400 font-bold">+${amount}</span> 点寿命</p>
+      <p class="text-xs text-red-400 mb-3">⚠️ 10%概率触发副作用：随机降低某项资质或成长</p>
+      <div class="space-y-2 max-h-[50vh] overflow-y-auto">
+        ${G.pets.map(p => {
+          const isDivine = p.isDivineBeast || (p.lifespan !== undefined && p.lifespan >= 99999);
+          const reason = isDivine ? '神兽寿命无限' : '可使用';
+          const currentLifespan = p.lifespan || 10000;
+          return `
+          <div class="bg-panel border border-game rounded-lg p-3 flex items-center justify-between ${isDivine ? 'opacity-40' : 'cursor-pointer hover:border-purple-500'}"
+            ${!isDivine ? `onclick="applyLifespanItem('${itemId}', '${p.id}')"` : ''}>
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="text-sm">${getRaceEmoji(p.race)}</span>
+                <span class="font-bold text-sm" style="color:${RARITY_COLORS[RARITIES.indexOf(p.rarity)]}">${p.name}</span>
+                <span class="text-xs text-secondary">Lv.${p.level}</span>
+              </div>
+              <div class="flex items-center gap-3 mt-1 text-xs">
+                <span class="text-green-400">寿命 ${currentLifespan}</span>
+              </div>
+            </div>
+            ${isDivine ? `<span class="text-xs text-red-400">${reason}</span>` : `<span class="text-xs text-green-400">可使用 →</span>`}
+          </div>`;
+        }).join('')}
+      </div>
+      <button class="btn-gold btn-sm mt-3 w-full" onclick="closeLifespanItemModal()">关闭</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) closeLifespanItemModal(); });
+}
+
+function applyLifespanItem(itemId, petId) {
+  if (typeof useLifespanItem !== 'function') {
+    showToast('功能未定义', 'error');
+    return;
+  }
+  const result = useLifespanItem(itemId, petId);
+  if (result.ok) {
+    showToast(result.msg, 'success');
+    if (result.sideEffect) showToast(result.sideEffect, 'warning');
+    saveGame();
+    render();
+    closeLifespanItemModal();
+    // 如果还有剩余道具，重新显示选择界面
+    const inv = G.inventory.find(i => i.id === itemId);
+    if (inv && inv.count > 0) showLifespanItemModal(itemId);
+  } else {
+    showToast(result.msg, 'error');
+  }
+}
+
+function closeLifespanItemModal() {
+  const modal = document.getElementById('lifespan-item-modal');
+  if (modal) modal.remove();
+}
+
+// ==================== 战斗结算Modal ====================
+
+function showBattleSettlementModal(rewards, map) {
+  if (!rewards) rewards = { gold: 0, exp: 0, items: [] };
+  if (!map) map = MAPS.find(m => m.id === G.player.currentMap);
+  
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'battle-settlement-modal';
+  overlay.innerHTML = `
+    <div class="modal-content scrollbar-thin" style="max-width:520px;max-height:85vh;">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-bold text-xl text-gold">🏆 战斗胜利结算</h2>
+        <button class="text-secondary hover:text-white text-xl" onclick="closeBattleSettlementModal()">✕</button>
+      </div>
+      ${map ? `<p class="text-center text-lg mb-4" style="color:${RARITY_COLORS[RARITIES.indexOf(map.rarity)]}">${map.name} · 通关！</p>` : ''}
+      
+      <div class="bg-panel border border-game rounded-lg p-4 mb-4">
+        <h3 class="font-bold text-sm text-secondary mb-3">本次奖励</h3>
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-sm">⭐ 经验</span>
+            <span class="text-sm text-yellow-400 font-bold">+${rewards.exp.toLocaleString()}</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-sm">🪙 金币</span>
+            <span class="text-sm text-yellow-400 font-bold">+${rewards.gold.toLocaleString()}</span>
+          </div>
+          ${rewards.items && rewards.items.length > 0 ? `
+          <div class="mt-3 pt-3 border-t border-game">
+            <span class="text-sm text-secondary mb-2 block">掉落道具</span>
+            <div class="flex flex-wrap gap-2">
+              ${rewards.items.map(it => `
+                <span class="bg-purple-900 bg-opacity-30 text-purple-300 px-2 py-1 rounded text-xs">${it.icon} ${it.name} ×${it.count}</span>
+              `).join('')}
+            </div>
+          </div>
+          ` : ''}
+        </div>
+      </div>
+      
+      <div class="bg-panel border border-game rounded-lg p-4 mb-4">
+        <h3 class="font-bold text-sm text-secondary mb-2">当前状态</h3>
+        <div class="space-y-1 text-xs">
+          <div class="flex justify-between">
+            <span class="text-secondary">经验</span>
+            <span>${G.player.exp.toLocaleString()}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-secondary">金币</span>
+            <span class="text-yellow-400">${G.player.gold.toLocaleString()}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-secondary">钻石</span>
+            <span class="text-purple-400">${G.player.diamond.toLocaleString()}</span>
+          </div>
+        </div>
+      </div>
+      
+      <button class="btn-gold btn-sm mt-3 w-full" onclick="closeBattleSettlementModal()">确定</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) closeBattleSettlementModal(); });
+}
+
+function closeBattleSettlementModal() {
+  const modal = document.getElementById('battle-settlement-modal');
   if (modal) modal.remove();
 }
 
@@ -10271,4 +10862,242 @@ function doFusion() {
   }
   saveGame();
   render();
+}
+
+// ==================== 新进阶系统 UI ====================
+
+/**
+ * 渲染进阶页面（进化页 advance sheet）
+ */
+function renderAdvanceSheet() {
+  var selectedPetId = window._advanceSelectedPet || '';
+  var selectedPet = selectedPetId ? G.pets.find(function(p) { return p.id === selectedPetId; }) : null;
+
+  // 筛选可进阶宠物
+  var advanceablePets = G.pets.filter(function(p) { return p.advanceable; });
+
+  var html = '<div class="bg-card border border-game rounded-xl p-4">' +
+    '<h2 class="font-bold text-lg mb-2">⭐ 宠物进阶</h2>' +
+    '<p class="text-xs text-secondary mb-3">使用进化晶石积满进阶值后可进阶，每次进阶成长和资质提升30%。T5拥有6技能格。</p>' +
+    '<p class="text-xs text-yellow-400 mb-3">📌 进化晶石可通过「活动 → 进化森林」获取。</p>';
+
+  if (advanceablePets.length === 0) {
+    html += '<p class="text-center text-secondary py-4">暂无可进阶的宠物。可进阶宠物图鉴中标有"可进阶"标记。</p>';
+    html += '</div>';
+    return html;
+  }
+
+  // 宠物选择列表
+  html += '<div class="mb-4"><p class="text-sm font-bold mb-2">选择可进阶宠物：</p>';
+  html += '<select id="advancePetSelect" class="w-full mb-3" onchange="selectAdvancePet(this.value)">';
+  html += '<option value="">-- 选择宠物 --</option>';
+  advanceablePets.forEach(function(p) {
+    var tier = getPetTier(p.name);
+    var rarityName = RARITY_NAMES[RARITIES.indexOf(p.rarity)] || p.rarity;
+    var selected = (p.id === selectedPetId) ? ' selected' : '';
+    html += '<option value="' + p.id + '"' + selected + '>' + p.name + ' (T' + tier + ' · ' + rarityName + ' · Lv.' + p.level + ')</option>';
+  });
+  html += '</select></div>';
+
+  if (selectedPet) {
+    var evolveInfo = getPetEvolveInfo(selectedPet);
+    if (evolveInfo.canEvolve) {
+      var currentTier = getPetTier(selectedPet.name);
+      var nextDex = getPetDex(evolveInfo.nextName);
+      var nextTier = evolveInfo.targetTier;
+      var advanceValue = selectedPet.advanceValue || 0;
+      var progressPct = Math.min(100, Math.floor(advanceValue / evolveInfo.advanceValueMax * 100));
+
+      // 当前形态 vs 进阶预览
+      html += '<div class="grid grid-cols-2 gap-4 mb-4">';
+      // 当前形态
+      html += '<div class="bg-panel border border-game rounded-lg p-3">';
+      html += '<p class="text-sm font-bold text-center mb-2">当前形态</p>';
+      html += '<p class="text-center text-lg font-bold">' + selectedPet.name + '</p>';
+      html += '<p class="text-center text-xs text-secondary">T' + currentTier + ' · ' + (selectedPet.race) + '</p>';
+      html += '<p class="text-center text-xs mt-1">成长: ' + (selectedPet.growth || 0).toFixed(2) + '</p>';
+      html += '<p class="text-center text-xs">资质总和: ' + APTITUDE_KEYS.reduce(function(s, k) { return s + (selectedPet.aptitude && selectedPet.aptitude[k] || 0); }, 0) + '</p>';
+      html += '<p class="text-center text-xs">技能格: ' + (selectedPet.innateSkills ? selectedPet.innateSkills.length : 0) + '/' + getPetMaxSkills(selectedPet.name) + '</p>';
+      html += '</div>';
+      // 进阶预览
+      html += '<div class="bg-panel border-2 border-yellow-500 rounded-lg p-3">';
+      html += '<p class="text-sm font-bold text-center mb-2 text-yellow-400">进阶预览</p>';
+      html += '<p class="text-center text-lg font-bold text-yellow-400">' + evolveInfo.nextName + '</p>';
+      html += '<p class="text-center text-xs text-secondary">T' + nextTier + ' · ' + (nextDex ? nextDex.race : '?') + '</p>';
+      html += '<p class="text-center text-xs mt-1">成长: ×1.3 → ' + ((selectedPet.growth || 0) * 1.3).toFixed(2) + '</p>';
+      html += '<p class="text-center text-xs">资质: ×1.3</p>';
+      html += '<p class="text-center text-xs">技能格: ' + getPetMaxSkills(evolveInfo.nextName) + '</p>';
+      html += '</div>';
+      html += '</div>';
+
+      // 进阶进度条
+      html += '<div class="mb-4">';
+      html += '<div class="flex justify-between text-xs mb-1"><span>进阶值</span><span>' + advanceValue + ' / ' + evolveInfo.advanceValueMax + '</span></div>';
+      html += '<div class="w-full bg-gray-700 rounded-full h-4 overflow-hidden">';
+      html += '<div class="bg-gradient-to-r from-yellow-500 to-orange-500 h-full transition-all" style="width:' + progressPct + '%"></div>';
+      html += '</div></div>';
+
+      // 进阶链展示
+      html += '<div class="text-center text-xs text-secondary mb-4">';
+      html += '进阶链: ' + evolveInfo.chain.map(function(name, i) {
+        var cls = i === (selectedPet.advanceStage || 0) ? 'text-yellow-400 font-bold' : (i < (selectedPet.advanceStage || 0) ? 'text-green-400' : '');
+        return '<span class="' + cls + '">' + name + '</span>';
+      }).join(' → ');
+      html += '</div>';
+
+      // 进化晶石使用按钮
+      html += '<div class="grid grid-cols-3 gap-3">';
+      var tiers = ['low', 'mid', 'high'];
+      tiers.forEach(function(tier) {
+        var config = EVOLVE_SYSTEM_CONFIG.ITEMS[tier];
+        var invItem = G.inventory.find(function(i) { return i.id === config.id; });
+        var count = invItem ? invItem.count : 0;
+        var disabled = count <= 0;
+        var btnCls = disabled ? 'opacity-50 cursor-not-allowed' : '';
+        html += '<div class="bg-panel border border-game rounded-lg p-3 text-center ' + btnCls + '">';
+        html += '<p class="text-sm font-bold">' + config.name + '</p>';
+        html += '<p class="text-xs text-secondary mt-1">基础+' + config.baseValue + '进阶值</p>';
+        html += '<p class="text-xs text-yellow-400">持有: ' + count + '</p>';
+        html += '<button class="mt-2 px-3 py-1 rounded text-xs ' + (disabled ? 'bg-gray-600' : 'bg-purple-700 hover:bg-purple-600') + ' text-white"' +
+          (disabled ? '' : ' onclick="useEvolutionCrystalUI(\'' + selectedPet.id + '\', \'' + tier + '\')"') + '>使用</button>';
+        html += '</div>';
+      });
+      html += '</div>';
+
+      // 一键进阶按钮（当进阶值满时）
+      if (advanceValue >= evolveInfo.advanceValueMax) {
+        html += '<div class="mt-4 text-center">';
+        html += '<button class="px-6 py-2 rounded-lg bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold hover:opacity-90" onclick="advancePetEvolveUI(\'' + selectedPet.id + '\')">⭐ 立即进阶</button>';
+        html += '</div>';
+      }
+    } else if (evolveInfo.maxed) {
+      html += '<div class="text-center py-4"><p class="text-yellow-400 font-bold">该宠物已达到最高进阶形态！</p></div>';
+    } else {
+      html += '<div class="text-center py-4"><p class="text-secondary">该宠物不可进阶。</p></div>';
+    }
+  } else {
+    html += '<p class="text-center text-secondary py-4">请选择一只可进阶的宠物。</p>';
+  }
+
+  html += '</div>';
+  return html;
+}
+
+/**
+ * 选择进阶宠物
+ */
+function selectAdvancePet(petId) {
+  window._advanceSelectedPet = petId;
+  render();
+}
+
+/**
+ * 使用进化晶石（UI入口）
+ */
+function useEvolutionCrystalUI(petId, itemTier) {
+  var result = useEvolutionCrystal(petId, itemTier);
+  if (result.ok) {
+    showToast(result.msg, result.crit ? 'success' : 'info');
+  } else {
+    showToast(result.msg, 'error');
+  }
+  saveGame();
+  render();
+}
+
+/**
+ * 执行宠物进阶（UI入口）
+ */
+function advancePetEvolveUI(petId) {
+  var result = advancePetEvolve(petId);
+  if (result.ok) {
+    showToast(result.msg, 'success');
+  } else {
+    showToast(result.msg, 'error');
+  }
+  saveGame();
+  render();
+}
+
+// ==================== 进化森林活动 UI ====================
+
+/**
+ * 渲染进化森林活动页面
+ */
+function renderActivityEvolutionForest() {
+  if (!EVOLUTION_FOREST_CONFIG) return '<div class="bg-card border border-game rounded-xl p-4"><p class="text-center text-secondary">活动配置不存在</p></div>';
+
+  var usedToday = getEvolutionForestUsedToday();
+  var remaining = EVOLUTION_FOREST_CONFIG.dailyLimit - usedToday;
+  var minLevel = EVOLUTION_FOREST_CONFIG.minLevel;
+  var isLocked = G.player.level < minLevel;
+
+  var html = renderActivityTeamBar();
+  html += '<div class="bg-card border border-game rounded-xl p-4">';
+  html += '<h2 class="font-bold text-lg mb-2">🌲 ' + EVOLUTION_FOREST_CONFIG.name + '</h2>';
+  html += '<p class="text-xs text-secondary mb-2">' + EVOLUTION_FOREST_CONFIG.desc + '</p>';
+  html += '<div class="flex justify-between text-xs mb-4">';
+  html += '<span class="text-yellow-400">今日剩余次数: ' + remaining + '/' + EVOLUTION_FOREST_CONFIG.dailyLimit + '</span>';
+  if (isLocked) {
+    html += '<span class="text-red-400">🔒 需要等级 ' + minLevel + '</span>';
+  }
+  html += '</div>';
+
+  if (isLocked) {
+    html += '<p class="text-center text-secondary py-4">需要角色等级达到 ' + minLevel + ' 级才能进入进化森林。</p>';
+    html += '</div>';
+    return html;
+  }
+
+  // 层数选择
+  html += '<div class="grid grid-cols-1 gap-3">';
+  EVOLUTION_FOREST_CONFIG.layers.forEach(function(layer) {
+    var rewardConfig = EVOLUTION_FOREST_CONFIG.rewards[layer.layer - 1];
+    var rewardDesc = [];
+    if (rewardConfig.crystalLow) rewardDesc.push('低级晶石×' + rewardConfig.crystalLow[0] + '~' + rewardConfig.crystalLow[1]);
+    if (rewardConfig.crystalMid) {
+      if (rewardConfig.crystalMid.chance >= 1) rewardDesc.push('中级晶石×' + rewardConfig.crystalMid.count);
+      else rewardDesc.push(Math.floor(rewardConfig.crystalMid.chance * 100) + '%概率中级晶石');
+    }
+    if (rewardConfig.crystalHigh) {
+      if (rewardConfig.crystalHigh.chance >= 1) rewardDesc.push('高级晶石×' + rewardConfig.crystalHigh.count);
+      else rewardDesc.push(Math.floor(rewardConfig.crystalHigh.chance * 100) + '%概率高级晶石');
+    }
+
+    var canChallenge = remaining > 0;
+    var btnDisabled = !canChallenge;
+
+    html += '<div class="bg-panel border border-game rounded-lg p-3 flex items-center justify-between">';
+    html += '<div class="flex-1">';
+    html += '<p class="font-bold text-sm">' + layer.icon + ' 第' + layer.layer + '层 · ' + layer.name + '</p>';
+    html += '<p class="text-xs text-secondary mt-1">' + layer.desc + '</p>';
+    html += '<p class="text-xs text-orange-400 mt-1">怪物: ' + layer.monsterName + ' (Lv.' + layer.level + ')</p>';
+    html += '<p class="text-xs text-yellow-400">奖励: ' + rewardDesc.join(' / ') + ' / 金币' + rewardConfig.gold[0] + '~' + rewardConfig.gold[1] + ' / 经验' + rewardConfig.exp[0] + '~' + rewardConfig.exp[1] + '</p>';
+    html += '</div>';
+    html += '<button class="ml-4 px-4 py-2 rounded text-sm ' + (btnDisabled ? 'bg-gray-600 cursor-not-allowed' : 'bg-green-700 hover:bg-green-600') + ' text-white"' +
+      (btnDisabled ? '' : ' onclick="enterEvolutionForestUI(' + layer.layer + ')"') + '>' + (btnDisabled ? '次数用完' : '挑战') + '</button>';
+    html += '</div>';
+  });
+  html += '</div>';
+
+  html += '<p class="text-xs text-secondary mt-3">💡 挑战失败不扣除次数，可反复尝试。暴击掉落进化晶石可加速宠物进阶！</p>';
+  html += '</div>';
+
+  // 收获日志
+  html += (typeof renderActivityHarvestLog === 'function' ? renderActivityHarvestLog('evolution_forest', '进化森林收获日志') : '');
+
+  return html;
+}
+
+/**
+ * 进入进化森林战斗（UI入口）
+ */
+function enterEvolutionForestUI(layer) {
+  var result = enterEvolutionForest(layer);
+  if (!result.ok) {
+    showToast(result.msg, 'error');
+    return;
+  }
+  // 进入战斗后切换到主界面显示战斗
+  navigateTo('main');
 }
