@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>暗影纪元 - 挂机宠物养成</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=MedievalSharp&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; }
+img, video { max-width: 100%; height: auto; display: block; }
+body { overflow-wrap: break-word; }
+
+:root {
+  --bg-deep: #0a0a14;
+  --bg-panel: #12122a;
+  --bg-card: #1a1a3e;
+  --gold: #d4a843;
+  --gold-light: #f0d68a;
+  --purple: #7c3aed;
+  --purple-light: #a78bfa;
+  --red: #ef4444;
+  --green: #22c55e;
+  --blue: #3b82f6;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --border-color: #2a2a5a;
+}
+
+body {
+  font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+.font-fantasy { font-family: 'MedievalSharp', cursive, sans-serif; }
+
+.bg-panel { background: var(--bg-panel); }
+.bg-card { background: var(--bg-card); }
+.border-game { border-color: var(--border-color); }
+.text-gold { color: var(--gold); }
+.text-gold-light { color: var(--gold-light); }
+.text-secondary { color: var(--text-secondary); }
+
+.btn-primary {
+  background: linear-gradient(135deg, #7c3aed, #5b21b6);
+  color: white;
+  border: 1px solid #8b5cf6;
+  padding: 8px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+.btn-primary:hover { background: linear-gradient(135deg, #8b5cf6, #6d28d9); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(124,58,237,0.4); }
+.btn-primary:active { transform: translateY(0); }
+
+.btn-gold {
+  background: linear-gradient(135deg, #d4a843, #b8860b);
+  color: #1a1a2e;
+  border: 1px solid #e6c460;
+  padding: 8px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 700;
+  transition: all 0.2s;
+}
+.btn-gold:hover { background: linear-gradient(135deg, #e6c460, #c99718); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(212,168,67,0.4); }
+
+.btn-danger {
+  background: linear-gradient(135deg, #ef4444, #b91c1c);
+  color: white;
+  border: 1px solid #f87171;
+  padding: 8px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn-sm { padding: 4px 12px; font-size: 0.8rem; border-radius: 6px; }
+
+.pet-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 12px;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+.pet-card:hover { border-color: var(--purple); box-shadow: 0 0 15px rgba(124,58,237,0.2); transform: translateY(-2px); }
+
+.rarity-common { border-left: 3px solid #9ca3af; }
+.rarity-uncommon { border-left: 3px solid #22c55e; }
+.rarity-rare { border-left: 3px solid #3b82f6; }
+.rarity-epic { border-left: 3px solid #a855f7; }
+.rarity-legendary { border-left: 3px solid #f59e0b; }
+.rarity-mythic { border-left: 3px solid #ef4444; }
+
+.tab-btn {
+  padding: 8px 16px;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+}
+.tab-btn.active {
+  background: var(--bg-card);
+  border-color: var(--border-color);
+  border-bottom-color: var(--bg-card);
+  color: var(--gold);
+}
+
+.progress-bar {
+  height: 8px;
+  background: #1e1e3a;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 5px rgba(124,58,237,0.3); }
+  50% { box-shadow: 0 0 20px rgba(124,58,237,0.6); }
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes eggCrack {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.1) rotate(-3deg); }
+  60% { transform: scale(0.95) rotate(2deg); }
+  100% { transform: scale(1); }
+}
+@keyframes petAttack {
+  0% { transform: translateX(0) translateY(0); }
+  30% { transform: translateX(80px) translateY(-10px) scale(1.2); }
+  60% { transform: translateX(80px) translateY(-10px) scale(1.2); }
+  100% { transform: translateX(0) translateY(0) scale(1); }
+}
+@keyframes monsterAttack {
+  0% { transform: translateX(0) translateY(0); }
+  30% { transform: translateX(-80px) translateY(-10px) scale(1.2); }
+  60% { transform: translateX(-80px) translateY(-10px) scale(1.2); }
+  100% { transform: translateX(0) translateY(0) scale(1); }
+}
+@keyframes monsterHurt {
+  0% { transform: translateX(0); filter: brightness(1); }
+  15% { transform: translateX(-10px); filter: brightness(2); }
+  30% { transform: translateX(10px); filter: brightness(0.5); }
+  45% { transform: translateX(-6px); filter: brightness(1.5); }
+  60% { transform: translateX(6px); filter: brightness(0.7); }
+  100% { transform: translateX(0); filter: brightness(1); }
+}
+@keyframes petHurt {
+  0% { transform: translateX(0); filter: brightness(1); }
+  15% { transform: translateX(10px); filter: brightness(2); }
+  30% { transform: translateX(-10px); filter: brightness(0.5); }
+  45% { transform: translateX(6px); filter: brightness(1.5); }
+  60% { transform: translateX(-6px); filter: brightness(0.7); }
+  100% { transform: translateX(0); filter: brightness(1); }
+}
+@keyframes damageFloat {
+  0% { opacity: 1; transform: translateY(0) scale(0.8); }
+  30% { opacity: 1; transform: translateY(-15px) scale(1.2); }
+  100% { opacity: 0; transform: translateY(-50px) scale(0.8); }
+}
+@keyframes critFloat {
+  0% { opacity: 1; transform: translateY(0) scale(0.5); }
+  30% { opacity: 1; transform: translateY(-10px) scale(1.8); }
+  100% { opacity: 0; transform: translateY(-60px) scale(1); }
+}
+@keyframes healFloat {
+  0% { opacity: 1; transform: translateY(0) scale(0.8); }
+  30% { opacity: 1; transform: translateY(-15px) scale(1.2); }
+  100% { opacity: 0; transform: translateY(-50px) scale(0.8); }
+}
+@keyframes dodgeFloat {
+  0% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-30px); }
+}
+@keyframes monsterDie {
+  0% { opacity: 1; transform: scale(1) rotate(0); filter: grayscale(0); }
+  40% { opacity: 0.7; transform: scale(0.95) rotate(-5deg); filter: grayscale(0.5); }
+  100% { opacity: 0.3; transform: scale(0.9) rotate(0) translateY(0); filter: grayscale(1); }
+}
+@keyframes monsterSpawn {
+  0% { opacity: 0; transform: scale(0.1) translateY(20px); }
+  60% { opacity: 1; transform: scale(1.1) translateY(-5px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes skillFire {
+  0% { box-shadow: 0 0 0px rgba(239,68,68,0); }
+  50% { box-shadow: 0 0 40px rgba(239,68,68,0.8), 0 0 80px rgba(251,146,60,0.4); }
+  100% { box-shadow: 0 0 0px rgba(239,68,68,0); }
+}
+@keyframes skillIce {
+  0% { box-shadow: 0 0 0px rgba(59,130,246,0); }
+  50% { box-shadow: 0 0 40px rgba(59,130,246,0.8), 0 0 80px rgba(147,197,253,0.4); }
+  100% { box-shadow: 0 0 0px rgba(59,130,246,0); }
+}
+@keyframes skillThunder {
+  0% { box-shadow: 0 0 0px rgba(250,204,21,0); }
+  50% { box-shadow: 0 0 40px rgba(250,204,21,0.8), 0 0 80px rgba(253,224,71,0.4); }
+  100% { box-shadow: 0 0 0px rgba(250,204,21,0); }
+}
+@keyframes skillShadow {
+  0% { box-shadow: 0 0 0px rgba(168,85,247,0); }
+  50% { box-shadow: 0 0 40px rgba(168,85,247,0.8), 0 0 80px rgba(192,132,252,0.4); }
+  100% { box-shadow: 0 0 0px rgba(168,85,247,0); }
+}
+@keyframes skillHeal {
+  0% { box-shadow: 0 0 0px rgba(34,197,94,0); }
+  50% { box-shadow: 0 0 40px rgba(34,197,94,0.8), 0 0 80px rgba(74,222,128,0.4); }
+  100% { box-shadow: 0 0 0px rgba(34,197,94,0); }
+}
+@keyframes drawReveal {
+  0% { opacity: 0; transform: scale(0.3) rotate(-180deg); }
+  60% { opacity: 1; transform: scale(1.15) rotate(10deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+@keyframes drawGlow {
+  0%, 100% { box-shadow: 0 0 20px var(--draw-color), 0 0 40px var(--draw-color); }
+  50% { box-shadow: 0 0 40px var(--draw-color), 0 0 80px var(--draw-color), 0 0 120px var(--draw-color); }
+}
+@keyframes lightRays {
+  0% { transform: rotate(0deg) scale(0.5); opacity: 0; }
+  30% { opacity: 0.8; }
+  100% { transform: rotate(360deg) scale(1.5); opacity: 0; }
+}
+@keyframes screenFlash {
+  0% { opacity: 0; }
+  20% { opacity: 0.9; }
+  100% { opacity: 0; }
+}
+@keyframes sparkleFloat {
+  0% { opacity: 0; transform: translateY(0) scale(0); }
+  30% { opacity: 1; transform: translateY(-20px) scale(1); }
+  100% { opacity: 0; transform: translateY(-60px) scale(0.3); }
+}
+@keyframes rainbowText {
+  0% { color: #ef4444; }
+  20% { color: #f59e0b; }
+  40% { color: #22c55e; }
+  60% { color: #3b82f6; }
+  80% { color: #a855f7; }
+  100% { color: #ef4444; }
+}
+@keyframes statusPoison {
+  0%, 100% { filter: hue-rotate(0deg); }
+  50% { filter: hue-rotate(120deg) brightness(0.8); }
+}
+@keyframes statusBurn {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.5) saturate(2); }
+}
+@keyframes statusFreeze {
+  0%, 100% { filter: brightness(1) hue-rotate(0deg); }
+  50% { filter: brightness(1.3) hue-rotate(200deg); }
+}
+@keyframes statusStun {
+  0% { transform: rotate(0deg); }
+  25% { transform: rotate(-5deg); }
+  75% { transform: rotate(5deg); }
+  100% { transform: rotate(0deg); }
+}
+@keyframes shieldPulse {
+  0%, 100% { box-shadow: 0 0 10px rgba(59,130,246,0.3), inset 0 0 10px rgba(59,130,246,0.1); }
+  50% { box-shadow: 0 0 25px rgba(59,130,246,0.6), inset 0 0 20px rgba(59,130,246,0.2); }
+}
+@keyframes battleBgScroll {
+  0% { background-position: 0 0; }
+  100% { background-position: 100px 50px; }
+}
+@keyframes giftGlow {
+  0%, 100% { box-shadow: 0 0 20px rgba(234,179,8,0.3), 0 0 40px rgba(234,179,8,0.1); }
+  50% { box-shadow: 0 0 30px rgba(234,179,8,0.5), 0 0 60px rgba(234,179,8,0.2); }
+}
+
+.animate-float { animation: float 3s ease-in-out infinite; }
+.animate-pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
+.animate-shake { animation: shake 0.3s ease-in-out; }
+.animate-fade-in { animation: fadeInUp 0.4s ease-out; }
+.animate-egg-crack { animation: eggCrack 0.6s ease-in-out; }
+.animate-pet-attack { animation: petAttack 0.4s ease-in-out; }
+.animate-monster-attack { animation: monsterAttack 0.4s ease-in-out; }
+.animate-monster-hurt { animation: monsterHurt 0.4s ease-in-out; }
+.animate-pet-hurt { animation: petHurt 0.4s ease-in-out; }
+.animate-monster-die { animation: monsterDie 0.6s ease-in forwards; }
+.animate-monster-spawn { animation: monsterSpawn 0.5s ease-out; }
+.animate-gift-glow { animation: giftGlow 2s ease-in-out infinite; }
+.animate-skill-fire { animation: skillFire 0.5s ease-out; }
+.animate-skill-ice { animation: skillIce 0.5s ease-out; }
+.animate-skill-thunder { animation: skillThunder 0.5s ease-out; }
+.animate-skill-shadow { animation: skillShadow 0.5s ease-out; }
+.animate-skill-heal { animation: skillHeal 0.5s ease-out; }
+.animate-status-poison { animation: statusPoison 1s ease-in-out infinite; }
+.animate-status-burn { animation: statusBurn 0.8s ease-in-out infinite; }
+.animate-status-freeze { animation: statusFreeze 1.5s ease-in-out infinite; }
+.animate-status-stun { animation: statusStun 0.3s ease-in-out infinite; }
+.animate-shield { animation: shieldPulse 2s ease-in-out infinite; }
+.animate-battle-bg { animation: battleBgScroll 20s linear infinite; }
+
+/* ===== 三段式技能动画：施法前摇 + 特效爆发 + 受击反馈 ===== */
+/* Stage 1: 施法前摇 - 施法者蓄力效果 */
+@keyframes castWindup {
+  0% { transform: scale(1); filter: brightness(1); }
+  40% { transform: scale(1.15); filter: brightness(1.8) drop-shadow(0 0 12px rgba(250,204,21,0.8)); }
+  70% { transform: scale(1.1); filter: brightness(1.5) drop-shadow(0 0 8px rgba(250,204,21,0.6)); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+@keyframes castWindupMagic {
+  0% { transform: scale(1); filter: brightness(1); }
+  40% { transform: scale(1.15); filter: brightness(1.8) drop-shadow(0 0 12px rgba(124,58,237,0.8)); }
+  70% { transform: scale(1.1); filter: brightness(1.5) drop-shadow(0 0 8px rgba(124,58,237,0.6)); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+.animate-cast-windup { animation: castWindup 0.3s ease-in-out; }
+.animate-cast-windup-magic { animation: castWindupMagic 0.3s ease-in-out; }
+
+/* Stage 2: 特效爆发 - 目标区域元素特效 */
+@keyframes vfxBurstFire {
+  0% { box-shadow: 0 0 0px rgba(239,68,68,0); transform: scale(1); }
+  30% { box-shadow: 0 0 50px rgba(239,68,68,0.9), 0 0 100px rgba(251,146,60,0.5); transform: scale(1.08); }
+  100% { box-shadow: 0 0 0px rgba(239,68,68,0); transform: scale(1); }
+}
+@keyframes vfxBurstIce {
+  0% { box-shadow: 0 0 0px rgba(59,130,246,0); transform: scale(1); }
+  30% { box-shadow: 0 0 50px rgba(59,130,246,0.9), 0 0 100px rgba(147,197,253,0.5); transform: scale(1.08); }
+  100% { box-shadow: 0 0 0px rgba(59,130,246,0); transform: scale(1); }
+}
+@keyframes vfxBurstThunder {
+  0% { box-shadow: 0 0 0px rgba(250,204,21,0); transform: scale(1); }
+  30% { box-shadow: 0 0 50px rgba(250,204,21,0.9), 0 0 100px rgba(253,224,71,0.5); transform: scale(1.08); }
+  100% { box-shadow: 0 0 0px rgba(250,204,21,0); transform: scale(1); }
+}
+@keyframes vfxBurstShadow {
+  0% { box-shadow: 0 0 0px rgba(168,85,247,0); transform: scale(1); }
+  30% { box-shadow: 0 0 50px rgba(168,85,247,0.9), 0 0 100px rgba(192,132,252,0.5); transform: scale(1.08); }
+  100% { box-shadow: 0 0 0px rgba(168,85,247,0); transform: scale(1); }
+}
+@keyframes vfxBurstHeal {
+  0% { box-shadow: 0 0 0px rgba(74,222,128,0); transform: scale(1); }
+  30% { box-shadow: 0 0 50px rgba(74,222,128,0.9), 0 0 100px rgba(134,239,172,0.5); transform: scale(1.08); }
+  100% { box-shadow: 0 0 0px rgba(74,222,128,0); transform: scale(1); }
+}
+@keyframes vfxBurstPoison {
+  0% { box-shadow: 0 0 0px rgba(34,197,94,0); transform: scale(1); }
+  30% { box-shadow: 0 0 50px rgba(34,197,94,0.9), 0 0 100px rgba(134,239,172,0.5); transform: scale(1.08); }
+  100% { box-shadow: 0 0 0px rgba(34,197,94,0); transform: scale(1); }
+}
+@keyframes vfxBurstNeutral {
+  0% { box-shadow: 0 0 0px rgba(148,163,184,0); transform: scale(1); }
+  30% { box-shadow: 0 0 50px rgba(148,163,184,0.9), 0 0 100px rgba(203,213,225,0.5); transform: scale(1.08); }
+  100% { box-shadow: 0 0 0px rgba(148,163,184,0); transform: scale(1); }
+}
+.animate-vfx-fire { animation: vfxBurstFire 0.5s ease-out; }
+.animate-vfx-ice { animation: vfxBurstIce 0.5s ease-out; }
+.animate-vfx-thunder { animation: vfxBurstThunder 0.5s ease-out; }
+.animate-vfx-shadow { animation: vfxBurstShadow 0.5s ease-out; }
+.animate-vfx-heal { animation: vfxBurstHeal 0.5s ease-out; }
+.animate-vfx-poison { animation: vfxBurstPoison 0.5s ease-out; }
+.animate-vfx-neutral { animation: vfxBurstNeutral 0.5s ease-out; }
+
+/* Stage 3: 受击反馈 - 增强版受击动画 */
+@keyframes monsterHurtEnhanced {
+  0% { transform: translateX(0) scale(1); filter: brightness(1); }
+  10% { transform: translateX(-12px) scale(0.95); filter: brightness(2.5) saturate(2); }
+  25% { transform: translateX(12px) scale(1.05); filter: brightness(0.4) saturate(0.5); }
+  40% { transform: translateX(-8px) scale(0.98); filter: brightness(2) saturate(1.5); }
+  55% { transform: translateX(8px) scale(1.02); filter: brightness(0.6) saturate(0.7); }
+  70% { transform: translateX(-4px) scale(1); filter: brightness(1.5); }
+  100% { transform: translateX(0) scale(1); filter: brightness(1); }
+}
+@keyframes petHurtEnhanced {
+  0% { transform: translateX(0) scale(1); filter: brightness(1); }
+  10% { transform: translateX(12px) scale(0.95); filter: brightness(2.5) saturate(2); }
+  25% { transform: translateX(-12px) scale(1.05); filter: brightness(0.4) saturate(0.5); }
+  40% { transform: translateX(8px) scale(0.98); filter: brightness(2) saturate(1.5); }
+  55% { transform: translateX(-8px) scale(1.02); filter: brightness(0.6) saturate(0.7); }
+  70% { transform: translateX(4px) scale(1); filter: brightness(1.5); }
+  100% { transform: translateX(0) scale(1); filter: brightness(1); }
+}
+.animate-monster-hurt-enhanced { animation: monsterHurtEnhanced 0.5s ease-in-out; }
+.animate-pet-hurt-enhanced { animation: petHurtEnhanced 0.5s ease-in-out; }
+
+/* v2.2.0 需求1：走路动画 */
+@keyframes walkBounce {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  25% { transform: translateY(-4px) rotate(2deg); }
+  50% { transform: translateY(0) rotate(-2deg); }
+  75% { transform: translateY(-2px) rotate(1deg); }
+}
+@keyframes walkMove {
+  0% { transform: translateX(-60px); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateX(60px); opacity: 0.8; }
+}
+@keyframes walkTree {
+  0% { transform: translateX(20px); }
+  100% { transform: translateX(-20px); }
+}
+.animate-walk-bounce { animation: walkBounce 0.5s ease-in-out infinite; }
+.walk-pet { animation: walkMove 2.5s ease-in-out forwards; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.animate-walk-tree { animation: walkTree 2.5s linear forwards; }
+
+@keyframes skillCast {
+  0% { opacity: 0; transform: scale(0.4) translateY(20px); }
+  15% { opacity: 1; transform: scale(1.2) translateY(0); }
+  25% { transform: scale(1) translateY(0); }
+  75% { opacity: 1; transform: scale(1) translateY(0); }
+  100% { opacity: 0; transform: scale(0.9) translateY(-10px); }
+}
+.animate-skillCast { animation: skillCast 1.5s ease-out forwards; }
+
+.damage-float {
+  position: absolute;
+  font-weight: 900;
+  pointer-events: none;
+  z-index: 10;
+  animation: damageFloat 1s ease-out forwards;
+}
+.crit-float {
+  position: absolute;
+  font-weight: 900;
+  pointer-events: none;
+  z-index: 10;
+  animation: critFloat 1.2s ease-out forwards;
+}
+
+.scrollbar-thin::-webkit-scrollbar { width: 4px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
+
+.toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: 600;
+  animation: fadeInUp 0.3s ease-out;
+  pointer-events: none;
+}
+.toast-success { background: #065f46; color: #6ee7b7; border: 1px solid #059669; }
+.toast-error { background: #7f1d1d; color: #fca5a5; border: 1px solid #dc2626; }
+.toast-info { background: #1e3a5f; color: #93c5fd; border: 1px solid #3b82f6; }
+
+.battle-arena {
+  position: relative;
+  min-height: 280px;
+  background: linear-gradient(180deg, #0d0d24 0%, #1a1030 50%, #0d0d24 100%);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.battle-arena::before {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 40%;
+  background: linear-gradient(0deg, rgba(30,20,50,0.8) 0%, transparent 100%);
+  pointer-events: none;
+}
+.battle-ground {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, transparent, rgba(124,58,237,0.4), rgba(212,168,67,0.4), rgba(124,58,237,0.4), transparent);
+}
+
+.battle-log {
+  max-height: 180px;
+  overflow-y: auto;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+.battle-log .damage { color: #f87171; }
+.battle-log .heal { color: #4ade80; }
+.battle-log .loot { color: #fbbf24; }
+.battle-log .info { color: #93c5fd; }
+.battle-log .crit { color: #fbbf24; font-weight: bold; }
+.battle-log .dodge { color: #a78bfa; }
+.battle-log .skill { color: #f0abfc; }
+
+input, select {
+  background: #1a1a3e;
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 8px 12px;
+  border-radius: 6px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+input:focus, select:focus { border-color: var(--purple); }
+
+.speed-btn {
+  padding: 2px 10px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  background: #1a1a3e;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+}
+.speed-btn.active {
+  background: var(--purple);
+  color: white;
+  border-color: var(--purple-light);
+}
+
+@keyframes chestBounce {
+  0%, 100% { transform: translateY(0) scale(1); }
+  30% { transform: translateY(-12px) scale(1.08); }
+  60% { transform: translateY(-4px) scale(1.02); }
+}
+@keyframes chestOpen {
+  0% { transform: scale(1) rotateY(0); }
+  40% { transform: scale(1.2) rotateY(0); }
+  60% { transform: scale(1.1) rotateY(30deg); }
+  100% { transform: scale(0) rotateY(90deg); opacity: 0; }
+}
+@keyframes chestGlow {
+  0%, 100% { box-shadow: 0 0 8px var(--glow-color); }
+  50% { box-shadow: 0 0 25px var(--glow-color), 0 0 50px var(--glow-color); }
+}
+@keyframes lootFly {
+  0% { opacity: 0; transform: translateY(20px) scale(0.5); }
+  60% { opacity: 1; transform: translateY(-10px) scale(1.1); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes layerClear {
+  0% { opacity: 0; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.1); }
+  100% { opacity: 0; transform: scale(1.3); }
+}
+
+.chest-item {
+  cursor: pointer;
+  transition: all 0.2s;
+  animation: chestBounce 1.5s ease-in-out infinite;
+}
+.chest-item:hover { transform: scale(1.15); filter: brightness(1.3); }
+.chest-opening { animation: chestOpen 0.8s ease-in forwards; }
+.chest-glow { animation: chestGlow 1.5s ease-in-out infinite; }
+.loot-fly { animation: lootFly 0.5s ease-out forwards; }
+.layer-clear { animation: layerClear 1.5s ease-out forwards; pointer-events: none; }
+
+.chest-white { --glow-color: rgba(200,200,200,0.4); }
+.chest-green { --glow-color: rgba(34,197,94,0.5); }
+.chest-blue { --glow-color: rgba(59,130,246,0.5); }
+.chest-purple { --glow-color: rgba(168,85,247,0.5); }
+.chest-orange { --glow-color: rgba(251,146,60,0.6); }
+
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000; animation: fadeInUp 0.2s ease-out;
+}
+.modal-content {
+  background: var(--bg-card); border: 1px solid var(--border-color);
+  border-radius: 16px; padding: 20px; width: 90%;
+  overflow-y: auto;
+}
+
+/* ===== Buff显示栏（页面顶部中间） ===== */
+#timeBar {
+position: fixed; top: 8px; left: 12px; z-index: 900;
+pointer-events: none;
+}
+.time-bar-chip {
+display: flex; align-items: center; gap: 4px;
+background: rgba(18,18,42,0.92);
+border-radius: 999px; padding: 2px 10px;
+font-size: 11px;
+box-shadow: 0 2px 8px rgba(99,102,241,0.3);
+pointer-events: auto;
+}
+#buffBar {
+position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 900;
+display: flex; flex-direction: row; gap: 6px;
+pointer-events: none; max-width: 60vw;
+}
+.buff-chip {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(18,18,42,0.92); border: 1px solid var(--gold);
+  border-radius: 50%; width: 28px; height: 28px;
+  font-size: 11px; color: var(--gold-light);
+  box-shadow: 0 2px 8px rgba(212,168,67,0.3);
+  animation: buffPulse 2s ease-in-out infinite;
+  pointer-events: auto; cursor: pointer;
+}
+.buff-chip .buff-icon { font-size: 15px; line-height: 1; }
+.buff-chip .buff-mult {
+  position: absolute; bottom: -2px; right: -2px;
+  background: var(--gold); color: #1a1a2e;
+  border-radius: 999px; padding: 0 3px; font-size: 9px; font-weight: 700;
+  line-height: 1.3; min-width: 14px; text-align: center;
+}
+.buff-chip .buff-tooltip-text {
+  display: none; position: absolute; top: 100%; left: 50%;
+  transform: translateX(-50%); margin-top: 6px;
+  background: rgba(10,10,20,0.96); border: 1px solid var(--gold);
+  border-radius: 6px; padding: 4px 8px; white-space: nowrap;
+  font-size: 11px; color: #fef3c7; z-index: 9999;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5); pointer-events: none;
+}
+.buff-chip:hover .buff-tooltip-text,
+.buff-chip.buff-tooltip-show .buff-tooltip-text { display: block; }
+@keyframes buffPulse {
+  0%, 100% { box-shadow: 0 2px 8px rgba(212,168,67,0.3); }
+  50% { box-shadow: 0 2px 14px rgba(212,168,67,0.6); }
+}
+
+/* ===== 十连抽卡包展示 ===== */
+.ten-pack-grid {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
+}
+.ten-pack-cell {
+  aspect-ratio: 3/4; border-radius: 8px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; position: relative;
+  overflow: hidden; animation: packReveal 0.4s ease-out both;
+  border: 2px solid;
+}
+.ten-pack-cell .tp-icon { font-size: 28px; }
+.ten-pack-cell .tp-name { font-size: 9px; text-align: center; padding: 0 2px; margin-top: 2px; line-height: 1.1; }
+.ten-pack-cell .tp-tag { font-size: 8px; padding: 1px 4px; border-radius: 999px; margin-top: 2px; font-weight: 700; }
+@keyframes packReveal {
+  0% { opacity: 0; transform: rotateY(90deg) scale(0.6); }
+  100% { opacity: 1; transform: rotateY(0) scale(1); }
+}
+.redeem-input {
+  background: var(--bg-deep); border: 1px solid var(--border-color);
+  border-radius: 8px; padding: 10px 14px; color: var(--text-primary);
+  font-size: 16px; letter-spacing: 2px; text-align: center; width: 100%;
+  outline: none;
+}
+.redeem-input:focus { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(212,168,67,0.2); }
+
+/* ===== 挖密藏九宫格样式 ===== */
+.dig-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  max-width: 360px;
+  margin: 0 auto;
+}
+.dig-cell {
+  aspect-ratio: 1;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+}
+.dig-cell-hidden {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border: 2px solid #334155;
+}
+.dig-cell-hidden:hover {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 12px rgba(139,92,246,0.3);
+  transform: translateY(-2px);
+}
+.dig-cell-peeked {
+  background: linear-gradient(135deg, #1a2a3a 0%, #0d1a2a 100%);
+  border: 2px dashed #6366f1;
+  opacity: 0.85;
+}
+.dig-cell-revealed {
+  cursor: default;
+}
+.dig-cell-selected {
+  border-color: #fbbf24 !important;
+  box-shadow: 0 0 16px rgba(251,191,36,0.4) !important;
+}
+.dig-cell-icon {
+  font-size: 32px;
+  line-height: 1;
+}
+.dig-cell-label {
+  font-size: 10px;
+  margin-top: 4px;
+  font-weight: 600;
+  text-align: center;
+  padding: 0 4px;
+}
+@keyframes digReveal {
+  0% { opacity: 0; transform: scale(0.3) rotate(-90deg); }
+  60% { opacity: 1; transform: scale(1.15) rotate(10deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+.dig-cell-revealed .dig-cell-icon { animation: digReveal 0.5s ease-out; }
+@keyframes digPeekPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.7; }
+}
+.dig-cell-peeked .dig-cell-icon { animation: digPeekPulse 2s ease-in-out infinite; }
+</style>
+</head>
+<body class="min-h-screen">
+
+<div id="app"></div>
+<div id="timeBar"></div>
+<div id="buffBar"></div>
+<div id="toast-container"></div>
+
+<script>
+// ===== 存档预检查 & 错误处理 =====
+window.__GAME_LOADED__ = false;
+
+// 提供一个全局函数用于手动清空存档
+window.clearSaveAndReload = function() {
+  try { localStorage.removeItem('shadow_era_save'); } catch(e) {}
+  try { localStorage.clear(); } catch(e) {}
+  location.reload();
+};
+
+// 在游戏加载前预检查存档是否损坏
+(function precheck() {
+  try {
+    var raw = localStorage.getItem('shadow_era_save');
+    if (raw) {
+      var parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || !parsed.player) {
+        // 存档结构异常，直接清掉
+        localStorage.removeItem('shadow_era_save');
+      }
+    }
+  } catch(e) {
+    // JSON解析失败或其它异常，清空存档
+    try { localStorage.removeItem('shadow_era_save'); } catch(e2) {}
+  }
+})();
+
+window.addEventListener('error', function(e) {
+  if (window.__GAME_LOADED__) return;
+  // 出错时自动清空存档
+  try { localStorage.removeItem('shadow_era_save'); } catch(e2) {}
+  var app = document.getElementById('app');
+  if (app) {
+    app.innerHTML = '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0a14;color:#e2e8f0;font-family:-apple-system,sans-serif;"><div style="text-align:center;padding:2rem;max-width:420px;"><div style="font-size:3rem;margin-bottom:0.5rem;">⚠️</div><p style="color:#ef4444;font-size:1.125rem;font-weight:700;margin-bottom:0.5rem;">游戏加载失败</p><p style="color:#94a3b8;font-size:0.875rem;margin-bottom:0.25rem;word-break:break-all;">' + (e.message || '未知错误') + '</p><p style="color:#64748b;font-size:0.75rem;margin-bottom:1.25rem;">位于第 ' + (e.lineno || '?') + ' 行</p><p style="color:#f59e0b;font-size:0.8rem;margin-bottom:0.75rem;">存档已自动清除，请点击下方按钮刷新</p><button onclick="window.clearSaveAndReload()" style="background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;border:1px solid #f87171;padding:0.75rem 2rem;border-radius:0.5rem;cursor:pointer;font-size:0.95rem;font-weight:700;margin-bottom:0.75rem;">清除存档并刷新</button><br><button onclick="localStorage.clear();location.reload()" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:1px solid #8b5cf6;padding:0.625rem 1.5rem;border-radius:0.5rem;cursor:pointer;font-size:0.875rem;font-weight:600;">清除所有缓存并刷新</button><p style="color:#475569;font-size:0.75rem;margin-top:0.75rem;">或按 Ctrl+Shift+R 强制刷新</p></div></div>';
+  }
+});
+</script>
+
+
+<script src="js/core.js"></script>
+<script src="js/config.js"></script>
+<script src="js/skill_data.js"></script>
+<script src="js/world_data.js"></script>
+<script src="js/systems.js"></script>
+<script src="js/state.js"></script>
+<script src="js/pet.js"></script>
+<script src="js/bloodline_engine.js"></script>
+<script src="js/battle.js"></script>
+<script src="js/economy.js"></script>
+<script src="js/mediator.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/ui_pet.js"></script>
+<script src="js/ui_system.js"></script>
+<script src="js/ui_activity.js"></script>
+<script src="js/ui_action.js"></script>
+<script src="js/v3_update.js"></script>
+<script src="js/main.js"></script>
+
+
+<script>
+if (!window.__GAME_LOADED__) {
+  try { localStorage.removeItem('shadow_era_save'); } catch(e) {}
+  // Try to detect if this is a parse error or runtime error
+  // If we reach here, the main script either had a parse error
+  // or set __GAME_LOADED__ back to false due to runtime error
+  document.getElementById('app').innerHTML = '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0a14;color:#e2e8f0;font-family:-apple-system,sans-serif;"><div style="text-align:center;padding:2rem;max-width:420px;"><div style="font-size:3rem;margin-bottom:0.5rem;">🔧</div><p style="color:#ef4444;font-size:1.125rem;font-weight:700;margin-bottom:0.5rem;">游戏脚本解析失败</p><p style="color:#94a3b8;font-size:0.875rem;margin-bottom:1rem;">脚本存在语法错误，无法加载游戏。这可能是因为浏览器版本过旧不支持某些JS语法（如可选链?.）。请尝试以下方法：</p><p style="color:#f59e0b;font-size:0.8rem;margin-bottom:0.75rem;">存档已自动清除</p><button onclick="window.clearSaveAndReload()" style="background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;border:1px solid #f87171;padding:0.75rem 2rem;border-radius:0.5rem;cursor:pointer;font-size:0.95rem;font-weight:700;margin-bottom:0.75rem;display:block;width:100%;max-width:280px;margin-left:auto;margin-right:auto;">清除存档并刷新</button><button onclick="localStorage.clear();location.reload()" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:1px solid #8b5cf6;padding:0.625rem 1.5rem;border-radius:0.5rem;cursor:pointer;font-size:0.875rem;font-weight:600;display:block;width:100%;max-width:280px;margin-left:auto;margin-right:auto;margin-top:0.5rem;">清除所有缓存并刷新</button><p style="color:#475569;font-size:0.75rem;margin-top:0.75rem;">或按 Ctrl+Shift+R 强制刷新</p><p style="color:#64748b;font-size:0.7rem;margin-top:1rem;">如持续出现此问题，请尝试使用Chrome/Edge最新版浏览器打开</p></div></div>';
+}
+</script>
+</body>
+</html>
